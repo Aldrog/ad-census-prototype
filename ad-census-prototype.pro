@@ -1,18 +1,11 @@
-TEMPLATE = app
+TEMPLATE = subdirs
+CONFIG  += ordered
 
-QT += qml quick
+SUBDIRS +=                   \
+    core                     \
+    adcensus
+
 CONFIG += c++11
 
-SOURCES += main.cpp \
-    adcensus.cpp
-
-RESOURCES += qml.qrc
-
-# Additional import path used to resolve QML modules in Qt Creator's code model
-QML_IMPORT_PATH =
-
-# Default rules for deployment.
-include(deployment.pri)
-
-HEADERS += \
-    adcensus.h
+core.file                     = core/core.pro
+adcensus.file = adcensus/adcensus.pro
