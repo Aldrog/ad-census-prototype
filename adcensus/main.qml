@@ -6,7 +6,7 @@ import QtQuick.Dialogs 1.2
 
 Window {
     visible: true
-    width: 640
+    width: 820
     height: 480
     title: qsTr("AD-Census")
 
@@ -82,6 +82,7 @@ Window {
         id: leftImgPicker
 
         selectedNameFilter: "*.jpg *.png"
+        folder: shortcuts.home
 
         onAccepted: {
             leftImg.source = fileUrl
@@ -92,6 +93,7 @@ Window {
         id: rightImgPicker
 
         selectedNameFilter: "*.jpg *.png"
+        folder: shortcuts.home
 
         onAccepted: {
             rightImg.source = fileUrl

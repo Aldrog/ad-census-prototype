@@ -18,8 +18,9 @@ public slots:
     void constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl);
 
 private:
-    corecvs::Matrix costAD(QImage leftImage, QImage rightImage);
-    corecvs::Matrix costCensus(QImage leftImage, QImage rightImage);
+    double costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity);
+    double costCensus(QImage leftImage, QImage rightImage, int x, int y, int disparity);
+    double robust(double cost, double lambda);
 };
 
 #endif // ADCENSUS_H
