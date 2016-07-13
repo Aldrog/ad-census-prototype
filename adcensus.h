@@ -14,7 +14,7 @@ public:
 signals:
 
 public slots:
-    QImage constructDisparityMap(QImage leftImage, QImage rightImage);
+    void constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl);
 
 private:
 };
