@@ -20,6 +20,7 @@ public slots:
 private:
     double costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity);
     double costCensus(QImage leftImage, QImage rightImage, int x, int y, int disparity);
+    int hammingDist(int64_t a, int64_t b);
     double robust(double cost, double lambda);
 };
 
