@@ -1,25 +1,30 @@
 #include "adcensus.h"
-#include <QDebug>
+#include <cmath>
 
 const double lambdaCT = 1.0;
 const double lambdaAD = 3.0;
+
+const int windowWh = 4;
+const int windowHh = 3;
 
 ADCensus::ADCensus(QObject *parent) : QObject(parent)
 {
 }
 
 void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
+    // Initialization
     QImage leftImage(leftImageUrl.toLocalFile());
     QImage rightImage(rightImageUrl.toLocalFile());
     int width = leftImage.width();
     int height = leftImage.height();
-    QImage result(width, height, QImage::Format_Grayscale8);
-    // Computations
-    for (int x = 4; x < width - 4; ++x)
-        for (int y = 3; y < height - 3; ++y) {
+    QImage result(width, height, QImage::Format_RGB32);
+
+    // Simple cost-based disparity computation
+    for (int x = windowWh; x < width - windowWh; ++x) {
+        for (int y = windowHh; y < height - windowHh; ++y) {
             double minCost = -1;
             int bestDisparity = 0;
-            for (int d = 0; d < x - 4 && d < width / 2; ++d) {
+            for (int d = 0; d < x - windowWh && d < width / 3; ++d) {
                 auto c_ad = costAD(leftImage, rightImage, x, y, d);
                 auto c_census = costCensus(leftImage, rightImage, x, y, d);
                 auto c_full = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
@@ -28,19 +33,24 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                     bestDisparity = d;
                 }
             }
-            qDebug() << x << y;
-            qDebug() << bestDisparity;
-            result.setPixelColor(x, y, QColor(bestDisparity / width * 255, bestDisparity / width * 255, bestDisparity / width * 255));
+            result.setPixelColor(x, y, QColor((double)bestDisparity / (double)width * 255 * 3,
+                                              (double)bestDisparity / (double)width * 255 * 3,
+                                              (double)bestDisparity / (double)width * 255 * 3));
         }
+        if(x % 10 == 0)
+            result.save("../../result.png");
+        std::cerr << x << "\n";
+    }
     result.save("../../result.png");
-    qDebug() << "finished";
+    std::cerr << "finished\n";
 }
 
 double ADCensus::costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity) {
-    return 1 / 3 * (
-            abs(QColor(leftImage.pixel(x, y)).red() - QColor(rightImage.pixel(x - disparity, y)).red()) +
-            abs(QColor(leftImage.pixel(x, y)).green() - QColor(rightImage.pixel(x - disparity, y)).green()) +
-            abs(QColor(leftImage.pixel(x, y)).blue() - QColor(rightImage.pixel(x - disparity, y)).blue()));
+    return (
+            (double)abs(leftImage.pixelColor(x, y).red() - rightImage.pixelColor(x - disparity, y).red()) +
+            (double)abs(leftImage.pixelColor(x, y).green() - rightImage.pixelColor(x - disparity, y).green()) +
+            (double)abs(leftImage.pixelColor(x, y).blue() - rightImage.pixelColor(x - disparity, y).blue())
+           ) / 3;
 }
 
 double ADCensus::costCensus(QImage leftImage, QImage rightImage, int x, int y, int disparity) {
@@ -49,8 +59,8 @@ double ADCensus::costCensus(QImage leftImage, QImage rightImage, int x, int y, i
     int leftCenter = qGray(leftImage.pixel(x, y));
     int rightCenter = qGray(rightImage.pixel(x - disparity, y));
 
-    for (int i = -4; i < 4; ++i) {
-        for (int j = -3; j < 3; ++j) {
+    for (int i = -windowWh; i < windowWh; ++i) {
+        for (int j = -windowHh; j < windowHh; ++j) {
             if(i != 0 || j != 0) {
                 leftCT += (qGray(leftImage.pixel(x + i, y + j)) >= leftCenter ? 1 : 0);
                 rightCT += (qGray(rightImage.pixel(x - disparity + i, y + j)) >= rightCenter ? 1 : 0);
@@ -59,13 +69,13 @@ double ADCensus::costCensus(QImage leftImage, QImage rightImage, int x, int y, i
             }
         }
     }
-    return hammingDist(leftCT, rightCT);
+    return (double)hammingDist(leftCT, rightCT);
 }
 
 int ADCensus::hammingDist(int64_t a, int64_t b) {
     int result = 0;
     for (int i = 0; i < 64; ++i) {
-        if(a >> 63 != b >> 63)
+        if((a | 1) != (b | 1))
             result++;
         a = a >> 1;
         b = b >> 1;
