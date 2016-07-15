@@ -1,8 +1,8 @@
 #include "adcensus.h"
 #include <cmath>
 
-const double lambdaCT = 1.0;
-const double lambdaAD = 3.0;
+const double lambdaCT = 10.0;
+const double lambdaAD = 30.0;
 
 const int windowWh = 4;
 const int windowHh = 3;
@@ -18,39 +18,51 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     int width = leftImage.width();
     int height = leftImage.height();
     QImage result(width, height, QImage::Format_RGB32);
+    auto bestDisparities = corecvs::Matrix(height, width);
+    auto minCosts = corecvs::Matrix(height, width, -1.0);
 
-    // Simple cost-based disparity computation
-    for (int x = windowWh; x < width - windowWh; ++x) {
-        for (int y = windowHh; y < height - windowHh; ++y) {
-            double minCost = -1;
-            int bestDisparity = 0;
-            for (int d = 0; d < x - windowWh && d < width / 3; ++d) {
+    // Disparity computation
+    for (int d = 0; d < width / 3; ++d) {
+        auto costs = corecvs::Matrix(height, width);
+        for (int x = windowWh + d; x < width - windowWh; ++x) {
+            for (int y = windowHh; y < height - windowHh; ++y) {
                 auto c_ad = costAD(leftImage, rightImage, x, y, d);
                 auto c_census = costCensus(leftImage, rightImage, x, y, d);
-                auto c_full = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
-                if(minCost < 0 || c_full < minCost) {
-                    minCost = c_full;
-                    bestDisparity = d;
+                costs.element(y, x) = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
+            }
+        }
+        aggregateCosts(&costs);
+        for (int x = windowWh + d; x < width - windowWh; ++x) {
+            for (int y = windowHh; y < height - windowHh; ++y) {
+                if(minCosts.element(y, x) < 0 || costs.element(y, x) < minCosts.element(y, x)) {
+                    minCosts.element(y, x) = costs.element(y, x);
+                    bestDisparities.element(y, x) = d;
+                    result.setPixelColor(x, y, QColor((double)bestDisparities.element(y, x) / (double)width * 255 * 3,
+                                                      (double)bestDisparities.element(y, x) / (double)width * 255 * 3,
+                                                      (double)bestDisparities.element(y, x) / (double)width * 255 * 3));
                 }
             }
-            result.setPixelColor(x, y, QColor((double)bestDisparity / (double)width * 255 * 3,
-                                              (double)bestDisparity / (double)width * 255 * 3,
-                                              (double)bestDisparity / (double)width * 255 * 3));
         }
-        if(x % 10 == 0)
-            result.save("../../result.png");
-        std::cerr << x << "\n";
+        result.save("result.png");
+        std::cerr << d << "\n";
     }
-    result.save("../../result.png");
+    for (int x = 0; x < width; ++x) {
+        for (int y = 0; y < height; ++y) {
+            result.setPixelColor(x, y, QColor((double)bestDisparities.element(y, x) / (double)width * 255 * 3,
+                                              (double)bestDisparities.element(y, x) / (double)width * 255 * 3,
+                                              (double)bestDisparities.element(y, x) / (double)width * 255 * 3));
+        }
+    }
+    result.save("result.png");
     std::cerr << "finished\n";
 }
 
 double ADCensus::costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity) {
-    return (
-            (double)abs(leftImage.pixelColor(x, y).red() - rightImage.pixelColor(x - disparity, y).red()) +
-            (double)abs(leftImage.pixelColor(x, y).green() - rightImage.pixelColor(x - disparity, y).green()) +
-            (double)abs(leftImage.pixelColor(x, y).blue() - rightImage.pixelColor(x - disparity, y).blue())
-           ) / 3;
+    return (double)(
+             abs(leftImage.pixelColor(x, y).red() - rightImage.pixelColor(x - disparity, y).red()) +
+             abs(leftImage.pixelColor(x, y).green() - rightImage.pixelColor(x - disparity, y).green()) +
+             abs(leftImage.pixelColor(x, y).blue() - rightImage.pixelColor(x - disparity, y).blue())
+                   ) / 3;
 }
 
 double ADCensus::costCensus(QImage leftImage, QImage rightImage, int x, int y, int disparity) {
@@ -74,7 +86,7 @@ double ADCensus::costCensus(QImage leftImage, QImage rightImage, int x, int y, i
 
 int ADCensus::hammingDist(int64_t a, int64_t b) {
     int result = 0;
-    for (int i = 0; i < 64; ++i) {
+    for (uint i = 0; i < sizeof(a) * 8; ++i) {
         if((a | 1) != (b | 1))
             result++;
         a = a >> 1;
@@ -85,4 +97,8 @@ int ADCensus::hammingDist(int64_t a, int64_t b) {
 
 double ADCensus::robust(double cost, double lambda) {
     return (1 - exp(-cost / lambda));
+}
+
+void ADCensus::aggregateCosts(corecvs::Matrix *costs) {
+    Q_UNUSED(costs)
 }
