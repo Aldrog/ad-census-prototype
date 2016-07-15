@@ -19,7 +19,10 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     int height = leftImage.height();
     QImage result(width, height, QImage::Format_RGB32);
     auto bestDisparities = corecvs::Matrix(height, width);
-    auto minCosts = corecvs::Matrix(height, width, -1.0);
+    auto minCosts = corecvs::Matrix(height, width);
+    for (int x = 0; x < width; ++x)
+        for (int y = 0; y < height; ++y)
+            minCosts.element(y, x) = -1.0;
 
     // Disparity computation
     for (int d = 0; d < width / 3; ++d) {
