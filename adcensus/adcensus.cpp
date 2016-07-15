@@ -7,6 +7,11 @@ const double lambdaAD = 30.0;
 const int windowWh = 4;
 const int windowHh = 3;
 
+const int maxAggregationArmLen = 34;
+const int avgAggregationArmLen = 17;
+const int anyAggregationArmColorThreshold = 20;
+const int maxAggregationArmColorThreshold = 6;
+
 ADCensus::ADCensus(QObject *parent) : QObject(parent)
 {
 }
@@ -34,7 +39,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                 costs.element(y, x) = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
             }
         }
-        aggregateCosts(&costs, leftImage);
+        aggregateCosts(&costs, leftImage, windowWh + d, windowHh, width - windowWh, height - windowHh);
         for (int x = windowWh + d; x < width - windowWh; ++x) {
             for (int y = windowHh; y < height - windowHh; ++y) {
                 if(minCosts.element(y, x) < 0 || costs.element(y, x) < minCosts.element(y, x)) {
@@ -46,7 +51,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                 }
             }
         }
-        result.save("result.png");
+        result.save("../../result.png");
         std::cerr << d << "\n";
     }
     for (int x = 0; x < width; ++x) {
@@ -56,7 +61,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                                               (double)bestDisparities.element(y, x) / (double)width * 255 * 3));
         }
     }
-    result.save("result.png");
+    result.save("../../result.png");
     std::cerr << "finished\n";
 }
 
@@ -102,16 +107,70 @@ double ADCensus::robust(double cost, double lambda) {
     return (1 - exp(-cost / lambda));
 }
 
-void ADCensus::aggregateCosts(corecvs::Matrix *costs, QImage image) {
-    int width = image.width();
-    int height = image.height();
+void ADCensus::aggregateCosts(corecvs::Matrix *costs, QImage image, int leftBorder, int topBorder, int width, int height) {
     auto rlAggregation = corecvs::Matrix(height, width);
-    for (int x = 3; x < width - 3; ++x) {
-        for (int y = 3; y < height - 3; ++y) {
-            for (int i = -3; i < 3; ++i)
-                rlAggregation.element(y, x) += costs->element(y, x + i) / 7;
-            for (int i = -3; i < 3; ++i)
-                costs->element(y, x) += rlAggregation.element(y + i, x) / 7;
+    for (int x = leftBorder; x < width; ++x) {
+        for (int y = topBorder; y < height; ++y) {
+            QColor currentPixel = image.pixelColor(x, y);
+            int dx = 1;
+            rlAggregation.element(y, x) = costs->element(y, x);
+            int i;
+            // Right arm
+            for (i = 1; x + i < width; ++i) {
+                if(i >= maxAggregationArmLen)
+                    break;
+                if(colorDifference(currentPixel, image.pixelColor(x + i, y)) >= anyAggregationArmColorThreshold ||
+                   colorDifference(image.pixelColor(x + i, y), image.pixelColor(x + i - 1, y)) >= anyAggregationArmColorThreshold)
+                    break;
+                if(i > avgAggregationArmLen &&
+                   colorDifference(currentPixel, image.pixelColor(x + i, y)) >= maxAggregationArmColorThreshold)
+                    break;
+                rlAggregation.element(y, x) += costs->element(y, x + i);
+            }
+            dx += i - 1;
+            // Left arm
+            for (i = 1; x - i > leftBorder; ++i) {
+                if(i >= maxAggregationArmLen)
+                    break;
+                if(colorDifference(currentPixel, image.pixelColor(x - i, y)) >= anyAggregationArmColorThreshold ||
+                   colorDifference(image.pixelColor(x - i, y), image.pixelColor(x - i + 1, y)) >= anyAggregationArmColorThreshold)
+                    break;
+                if(i > avgAggregationArmLen &&
+                   colorDifference(currentPixel, image.pixelColor(x - i, y)) >= maxAggregationArmColorThreshold)
+                    break;
+                rlAggregation.element(y, x) += costs->element(y, x - i);
+            }
+            dx += i - 1;
+            rlAggregation.element(y, x) /= dx;
+
+            int dy = 1;
+            // Top arm
+            for (i = 1; y + i < height; ++i) {
+                if(i >= maxAggregationArmLen)
+                    break;
+                if(colorDifference(currentPixel, image.pixelColor(x, y + i)) >= anyAggregationArmColorThreshold ||
+                   colorDifference(image.pixelColor(x, y + i), image.pixelColor(x, y + i - 1)) >= anyAggregationArmColorThreshold)
+                    break;
+                if(i > avgAggregationArmLen &&
+                   colorDifference(currentPixel, image.pixelColor(x, y + i)) >= maxAggregationArmColorThreshold)
+                    break;
+                costs->element(y, x) += rlAggregation.element(y + i, x);
+            }
+            dy += i - 1;
+            // Bottom arm
+            for (i = 1; y - i > topBorder; ++i) {
+                if(i >= maxAggregationArmLen)
+                    break;
+                if(colorDifference(currentPixel, image.pixelColor(x, y - i)) >= anyAggregationArmColorThreshold ||
+                   colorDifference(image.pixelColor(x, y - i), image.pixelColor(x, y - i + 1)) >= anyAggregationArmColorThreshold)
+                    break;
+                if(i > avgAggregationArmLen &&
+                   colorDifference(currentPixel, image.pixelColor(x, y - i)) >= maxAggregationArmColorThreshold)
+                    break;
+                costs->element(y, x) += rlAggregation.element(y - i, x);
+            }
+            dy += i - 1;
+            costs->element(y, x) /= dy;
         }
     }
 }
