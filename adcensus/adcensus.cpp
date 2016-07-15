@@ -34,7 +34,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                 costs.element(y, x) = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
             }
         }
-        aggregateCosts(&costs);
+        aggregateCosts(&costs, leftImage);
         for (int x = windowWh + d; x < width - windowWh; ++x) {
             for (int y = windowHh; y < height - windowHh; ++y) {
                 if(minCosts.element(y, x) < 0 || costs.element(y, x) < minCosts.element(y, x)) {
@@ -102,6 +102,16 @@ double ADCensus::robust(double cost, double lambda) {
     return (1 - exp(-cost / lambda));
 }
 
-void ADCensus::aggregateCosts(corecvs::Matrix *costs) {
-    Q_UNUSED(costs)
+void ADCensus::aggregateCosts(corecvs::Matrix *costs, QImage image) {
+    int width = image.width();
+    int height = image.height();
+    auto rlAggregation = corecvs::Matrix(height, width);
+    for (int x = 3; x < width - 3; ++x) {
+        for (int y = 3; y < height - 3; ++y) {
+            for (int i = -3; i < 3; ++i)
+                rlAggregation.element(y, x) += costs->element(y, x + i) / 7;
+            for (int i = -3; i < 3; ++i)
+                costs->element(y, x) += rlAggregation.element(y + i, x) / 7;
+        }
+    }
 }
