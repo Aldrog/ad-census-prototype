@@ -113,8 +113,8 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, QImage image, int leftBord
         for (int y = topBorder; y < height; ++y) {
             QColor currentPixel = image.pixelColor(x, y);
             int dx = 1;
-            rlAggregation.element(y, x) = costs->element(y, x);
             int i;
+            rlAggregation.element(y, x) = costs->element(y, x);
             // Right arm
             for (i = 1; x + i < width; ++i) {
                 if(i >= maxAggregationArmLen)
@@ -142,14 +142,20 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, QImage image, int leftBord
             }
             dx += i - 1;
             rlAggregation.element(y, x) /= dx;
+        }
+    }
 
+    for (int x = leftBorder; x < width; ++x) {
+        for (int y = topBorder; y < height; ++y) {
+            QColor currentPixel = image.pixelColor(x, y);
             int dy = 1;
+            int i;
             // Top arm
             for (i = 1; y + i < height; ++i) {
                 if(i >= maxAggregationArmLen)
                     break;
                 if(colorDifference(currentPixel, image.pixelColor(x, y + i)) >= anyAggregationArmColorThreshold ||
-                   colorDifference(image.pixelColor(x, y + i), image.pixelColor(x, y + i - 1)) >= anyAggregationArmColorThreshold)
+                   colorDifference(image.pixelColor(x, y + i), image.pixelColor(x, y + (i - 1))) >= anyAggregationArmColorThreshold)
                     break;
                 if(i > avgAggregationArmLen &&
                    colorDifference(currentPixel, image.pixelColor(x, y + i)) >= maxAggregationArmColorThreshold)
@@ -162,7 +168,7 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, QImage image, int leftBord
                 if(i >= maxAggregationArmLen)
                     break;
                 if(colorDifference(currentPixel, image.pixelColor(x, y - i)) >= anyAggregationArmColorThreshold ||
-                   colorDifference(image.pixelColor(x, y - i), image.pixelColor(x, y - i + 1)) >= anyAggregationArmColorThreshold)
+                   colorDifference(image.pixelColor(x, y - i), image.pixelColor(x, y - (i - 1))) >= anyAggregationArmColorThreshold)
                     break;
                 if(i > avgAggregationArmLen &&
                    colorDifference(currentPixel, image.pixelColor(x, y - i)) >= maxAggregationArmColorThreshold)
