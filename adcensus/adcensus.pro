@@ -10,7 +10,7 @@ exists(../../../config.pri) {
     include($$ROOT_DIR/cvs-config.pri)
 }
 
-QT += qml quick
+QT += qml quick widgets
 
 include(../core/core.pri)
 

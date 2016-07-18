@@ -1,4 +1,4 @@
-import QtQuick 2.6
+import QtQuick 2.5
 import QtQuick.Layouts 1.1
 import QtQuick.Window 2.2
 import QtQuick.Controls 1.4
@@ -15,7 +15,7 @@ Window {
         spacing: 8
 
         Row {
-            padding: 8
+            //padding: 8
             spacing: 8
 
             Button {
