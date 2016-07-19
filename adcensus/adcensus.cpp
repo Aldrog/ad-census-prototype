@@ -166,12 +166,12 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
             // Right arm
             for (i = 1; x + i < width; ++i) {
                 RGBColor toAddPixel = image->element(y, x + i);
-                RGBColor toAddPixel1 = image->element(y, x + i - 1);
+                RGBColor prevPixel = image->element(y, x + (i - 1));
 
                 if(i >= maxAggregationArmLen)
                     break;
                 if(colorDifference(currentPixel, toAddPixel) >= anyAggregationArmColorThreshold ||
-                   colorDifference(toAddPixel, toAddPixel1) >= anyAggregationArmColorThreshold)
+                   colorDifference(toAddPixel, prevPixel) >= anyAggregationArmColorThreshold)
                     break;
                 if(i > avgAggregationArmLen &&
                    colorDifference(currentPixel, toAddPixel) >= maxAggregationArmColorThreshold)
@@ -182,12 +182,12 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
             // Left arm
             for (i = 1; x - i > leftBorder; ++i) {
                 RGBColor toAddPixel = image->element(y, x - i);
-                RGBColor toAddPixel1 = image->element(y, x - i + 1);
+                RGBColor prevPixel = image->element(y, x - (i - 1));
 
                 if(i >= maxAggregationArmLen)
                     break;
                 if(colorDifference(currentPixel, toAddPixel) >= anyAggregationArmColorThreshold ||
-                   colorDifference(toAddPixel , toAddPixel1) >= anyAggregationArmColorThreshold)
+                   colorDifference(toAddPixel, prevPixel) >= anyAggregationArmColorThreshold)
                     break;
                 if(i > avgAggregationArmLen &&
                    colorDifference(currentPixel, toAddPixel) >= maxAggregationArmColorThreshold)
@@ -207,12 +207,12 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
             // Top arm
             for (i = 1; y + i < height; ++i) {
                 RGBColor toAddPixel = image->element(y + i, x);
-                RGBColor toAddPixel1 = image->element(y + i -1, x);
+                RGBColor prevPixel = image->element(y + (i - 1), x);
 
                 if(i >= maxAggregationArmLen)
                     break;
                 if(colorDifference(currentPixel, toAddPixel) >= anyAggregationArmColorThreshold ||
-                   colorDifference(toAddPixel, toAddPixel1) >= anyAggregationArmColorThreshold)
+                   colorDifference(toAddPixel, prevPixel) >= anyAggregationArmColorThreshold)
                     break;
                 if(i > avgAggregationArmLen &&
                    colorDifference(currentPixel, toAddPixel) >= maxAggregationArmColorThreshold)
@@ -223,12 +223,12 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
             // Bottom arm
             for (i = 1; y - i > topBorder; ++i) {
                 RGBColor toAddPixel = image->element(y - i, x);
-                RGBColor toAddPixel1 = image->element(y - i + 1, x);
+                RGBColor prevPixel = image->element(y - (i - 1), x);
 
                 if(i >= maxAggregationArmLen)
                     break;
                 if(colorDifference(currentPixel, toAddPixel) >= anyAggregationArmColorThreshold ||
-                   colorDifference(toAddPixel, toAddPixel1) >= anyAggregationArmColorThreshold)
+                   colorDifference(toAddPixel, prevPixel) >= anyAggregationArmColorThreshold)
                     break;
                 if(i > avgAggregationArmLen &&
                    colorDifference(currentPixel, toAddPixel) >= maxAggregationArmColorThreshold)
