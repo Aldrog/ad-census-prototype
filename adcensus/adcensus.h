@@ -23,6 +23,11 @@ public slots:
     void constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl);
 
 private:
+    const int maxAggregationArmLen = 34;
+    const int avgAggregationArmLen = 17;
+    const int anyAggregationArmColorThreshold = 20;
+    const int maxAggregationArmColorThreshold = 6;
+
     double costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity);
     double costCensus(corecvs::RGB24Buffer *leftImage, corecvs::RGB24Buffer *rightImage, int x, int y, int disparity);
     int hammingDist(int64_t a, int64_t b);
@@ -38,6 +43,15 @@ private:
 
     inline int colorDifference(const RGBColor &a, const RGBColor &b) {
         return RGBColor::diff(a,b).maximum();
+    }
+
+    inline bool fitsForAggregation(int len, RGBColor current, RGBColor toCheck, RGBColor previous) {
+        return (
+                    len < maxAggregationArmLen &&
+                    colorDifference(current, toCheck) < anyAggregationArmColorThreshold &&
+                    colorDifference(toCheck, previous) < anyAggregationArmColorThreshold &&
+                    (len < avgAggregationArmLen || colorDifference(current, toCheck) < maxAggregationArmColorThreshold)
+               );
     }
 };
 

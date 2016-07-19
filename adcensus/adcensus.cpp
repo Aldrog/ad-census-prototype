@@ -3,6 +3,7 @@
 #include "bufferFactory.h"
 
 #include <bmpLoader.h>
+#include <calculationStats.h>
 #include <cmath>
 
 const double lambdaCT = 10.0;
@@ -11,16 +12,21 @@ const double lambdaAD = 30.0;
 const int windowWh = 4;
 const int windowHh = 3;
 
-const int maxAggregationArmLen = 34;
-const int avgAggregationArmLen = 17;
-const int anyAggregationArmColorThreshold = 20;
-const int maxAggregationArmColorThreshold = 6;
-
 ADCensus::ADCensus(QObject *parent) : QObject(parent)
 {
 }
 
 using corecvs::Matrix;
+
+/*
+void makeCensus(RGB24Buffer *leftImage, AbstractBuffer<uint64_t> *census)
+{
+    if (!leftImage->hasSameSize(census))
+        return;
+    census->element(i,j) =
+
+}
+*/
 
 void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     // Initialization
@@ -39,9 +45,19 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     RGB24Buffer *leftImage  = BMPLoader().loadRGB(left);
     RGB24Buffer *rightImage = BMPLoader().loadRGB(right);
 
+    G8Buffer *leftGrayImage  =  leftImage->getChannel(ImageChannel::GRAY);
+    G8Buffer *rightGrayImage = rightImage->getChannel(ImageChannel::GRAY);
+
+
 
     int width = leftImage->w;
     int height = leftImage->h;
+
+    BaseTimeStatisticsCollector collector;
+    Statistics outerStats;
+    outerStats.setValue("H", height);
+    outerStats.setValue("W", width);
+
 
     //QImage result(width, height, QImage::Format_RGB32);
     RGB24Buffer result(leftImage->getSize());
@@ -50,15 +66,17 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     Matrix minCosts = Matrix(height, width);
     minCosts.fillWith(-1.0);
 
-    clock_t begin;
-    clock_t end;
+    AbstractBuffer<uint64_t> leftCesus;
+
     // Disparity computation
+    outerStats.startInterval();
     for (int d = 0; d < width / 3; ++d) {
-        begin = clock();
-        auto costs = Matrix(height, width);
-        end = clock();
-        std::cerr << "Matrix construction: " << double(end - begin) << "\n";
-        begin = clock();
+        Statistics stats;
+        stats.startInterval();
+        Matrix costs = Matrix(height, width);
+        std::cerr << "Matrix construction: " << stats.helperTimer.usecsToNow() << "\n";
+        stats.resetInterval("Matrix construction");
+
         for (int x = windowWh + d; x < width - windowWh; ++x) {
             for (int y = windowHh; y < height - windowHh; ++y) {
                 //auto c_ad = costAD(leftImage, rightImage, x, y, d);
@@ -68,13 +86,15 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                 costs.element(y, x) = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
             }
         }
-        end = clock();
-        std::cerr << "Cost computation: " << double(end - begin) << "\n";
-        begin = clock();
+
+        std::cerr << "Cost computation: " << stats.helperTimer.usecsToNow() << "\n";
+        stats.resetInterval("Cost computation");
+
         aggregateCosts(&costs, leftImage, windowWh + d, windowHh, width - windowWh, height - windowHh);
-        end = clock();
-        std::cerr << "Cost aggregation: " << double(end - begin) << "\n";
-        begin = clock();
+
+        std::cerr << "Cost aggregation: " << stats.helperTimer.usecsToNow() << "\n";
+        stats.resetInterval("Cost aggregation");
+
         for (int x = windowWh + d; x < width - windowWh; ++x) {
             for (int y = windowHh; y < height - windowHh; ++y) {
                 if(minCosts.element(y, x) < 0 || costs.element(y, x) < minCosts.element(y, x)) {
@@ -90,9 +110,14 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
             }
         }
         BMPLoader().save("../../result.bmp", &result);
-        end = clock();
-        std::cerr << "Comparing with previous and saving result: " << double(end - begin) << "\n";
+
+        std::cerr << "Comparing with previous and saving result: " << stats.helperTimer.usecsToNow() << "\n";
+        stats.endInterval("Comparing with previous and saving result");
+
         std::cerr << d << "\n";
+
+        collector.addStatistics(stats);
+
     }
     for (int x = 0; x < width; ++x) {
         for (int y = 0; y < height; ++y) {
@@ -102,6 +127,10 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     }
     BMPLoader().save("../../result.bmp", &result);
     std::cerr << "finished\n";
+    outerStats.endInterval("Total");
+    collector.addStatistics(outerStats);
+    collector.printAdvanced();
+    fflush(stdout);
 }
 
 #if 0
@@ -124,8 +153,9 @@ double ADCensus::costCensus(RGB24Buffer* leftImage, RGB24Buffer* rightImage, int
     for (int i = -windowHh; i < windowHh; ++i) {
         for (int j = -windowWh; j < windowWh; ++j) {
             if(i != 0 || j != 0) {
-                result += ((leftImage->element(y + i, x + j).brightness() >= leftCenter) ==
-                           (rightImage->element(y + i, x - disparity + j).brightness() >= rightCenter) ? 0 : 1);
+                result += ((leftImage->element(y + i, x + j).brightness() >= leftCenter) !=
+                           (rightImage->element(y + i, x - disparity + j).brightness() >= rightCenter));
+
                 /*
                 leftCT += (leftImage->element(y + i, x + j).brightness() >= leftCenter ? 1 : 0);
 
@@ -168,13 +198,7 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
                 RGBColor toAddPixel = image->element(y, x + i);
                 RGBColor prevPixel = image->element(y, x + (i - 1));
 
-                if(i >= maxAggregationArmLen)
-                    break;
-                if(colorDifference(currentPixel, toAddPixel) >= anyAggregationArmColorThreshold ||
-                   colorDifference(toAddPixel, prevPixel) >= anyAggregationArmColorThreshold)
-                    break;
-                if(i > avgAggregationArmLen &&
-                   colorDifference(currentPixel, toAddPixel) >= maxAggregationArmColorThreshold)
+                if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
                     break;
                 rlAggregation.element(y, x) += costs->element(y, x + i);
             }
@@ -184,13 +208,7 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
                 RGBColor toAddPixel = image->element(y, x - i);
                 RGBColor prevPixel = image->element(y, x - (i - 1));
 
-                if(i >= maxAggregationArmLen)
-                    break;
-                if(colorDifference(currentPixel, toAddPixel) >= anyAggregationArmColorThreshold ||
-                   colorDifference(toAddPixel, prevPixel) >= anyAggregationArmColorThreshold)
-                    break;
-                if(i > avgAggregationArmLen &&
-                   colorDifference(currentPixel, toAddPixel) >= maxAggregationArmColorThreshold)
+                if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
                     break;
                 rlAggregation.element(y, x) += costs->element(y, x - i);
             }
@@ -209,13 +227,7 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
                 RGBColor toAddPixel = image->element(y + i, x);
                 RGBColor prevPixel = image->element(y + (i - 1), x);
 
-                if(i >= maxAggregationArmLen)
-                    break;
-                if(colorDifference(currentPixel, toAddPixel) >= anyAggregationArmColorThreshold ||
-                   colorDifference(toAddPixel, prevPixel) >= anyAggregationArmColorThreshold)
-                    break;
-                if(i > avgAggregationArmLen &&
-                   colorDifference(currentPixel, toAddPixel) >= maxAggregationArmColorThreshold)
+                if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
                     break;
                 costs->element(y, x) += rlAggregation.element(y + i, x);
             }
@@ -225,13 +237,7 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
                 RGBColor toAddPixel = image->element(y - i, x);
                 RGBColor prevPixel = image->element(y - (i - 1), x);
 
-                if(i >= maxAggregationArmLen)
-                    break;
-                if(colorDifference(currentPixel, toAddPixel) >= anyAggregationArmColorThreshold ||
-                   colorDifference(toAddPixel, prevPixel) >= anyAggregationArmColorThreshold)
-                    break;
-                if(i > avgAggregationArmLen &&
-                   colorDifference(currentPixel, toAddPixel) >= maxAggregationArmColorThreshold)
+                if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
                     break;
                 costs->element(y, x) += rlAggregation.element(y - i, x);
             }
