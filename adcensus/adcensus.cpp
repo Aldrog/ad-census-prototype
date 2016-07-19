@@ -48,16 +48,17 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
 
     auto bestDisparities = Matrix(height, width);
     Matrix minCosts = Matrix(height, width);
+    minCosts.fillWith(-1.0);
 
-    for (int x = 0; x < width; ++x)
-        for (int y = 0; y < height; ++y)
-            minCosts.element(y, x) = -1.0;
-
-
-
+    clock_t begin;
+    clock_t end;
     // Disparity computation
     for (int d = 0; d < width / 3; ++d) {
+        begin = clock();
         auto costs = Matrix(height, width);
+        end = clock();
+        std::cerr << "Matrix construction: " << double(end - begin) << "\n";
+        begin = clock();
         for (int x = windowWh + d; x < width - windowWh; ++x) {
             for (int y = windowHh; y < height - windowHh; ++y) {
                 //auto c_ad = costAD(leftImage, rightImage, x, y, d);
@@ -67,7 +68,13 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                 costs.element(y, x) = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
             }
         }
+        end = clock();
+        std::cerr << "Cost computation: " << double(end - begin) << "\n";
+        begin = clock();
         aggregateCosts(&costs, leftImage, windowWh + d, windowHh, width - windowWh, height - windowHh);
+        end = clock();
+        std::cerr << "Cost aggregation: " << double(end - begin) << "\n";
+        begin = clock();
         for (int x = windowWh + d; x < width - windowWh; ++x) {
             for (int y = windowHh; y < height - windowHh; ++y) {
                 if(minCosts.element(y, x) < 0 || costs.element(y, x) < minCosts.element(y, x)) {
@@ -83,6 +90,8 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
             }
         }
         BMPLoader().save("../../result.bmp", &result);
+        end = clock();
+        std::cerr << "Comparing with previous and saving result: " << double(end - begin) << "\n";
         std::cerr << d << "\n";
     }
     for (int x = 0; x < width; ++x) {
@@ -106,25 +115,29 @@ double ADCensus::costAD(QImage leftImage, QImage rightImage, int x, int y, int d
 #endif
 
 double ADCensus::costCensus(RGB24Buffer* leftImage, RGB24Buffer* rightImage, int x, int y, int disparity) {
-    int64_t leftCT = 0;
-    int64_t rightCT = 0;
+    //int64_t leftCT = 0;
+    //int64_t rightCT = 0;
     int leftCenter  = leftImage->element(y, x).brightness();
     int rightCenter = rightImage->element(y, x - disparity).brightness();
+    int result = 0;
 
     for (int i = -windowHh; i < windowHh; ++i) {
         for (int j = -windowWh; j < windowWh; ++j) {
             if(i != 0 || j != 0) {
+                result += ((leftImage->element(y + i, x + j).brightness() >= leftCenter) ==
+                           (rightImage->element(y + i, x - disparity + j).brightness() >= rightCenter) ? 0 : 1);
+                /*
                 leftCT += (leftImage->element(y + i, x + j).brightness() >= leftCenter ? 1 : 0);
 
                 rightCT += (rightImage->element(y + i, x - disparity + j).brightness() >= rightCenter ? 1 : 0);
 
-
                 leftCT = leftCT << 1;
                 rightCT = rightCT << 1;
+                */
             }
         }
     }
-    return (double)hammingDist(leftCT, rightCT);
+    return (double)result; //hammingDist(leftCT, rightCT);
 }
 
 int ADCensus::hammingDist(int64_t a, int64_t b) {
