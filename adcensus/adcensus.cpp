@@ -1,6 +1,7 @@
 #include "adcensus.h"
 #include "rgb24Buffer.h"
 #include "bufferFactory.h"
+#include "tbbWrapper.h"
 
 #include <bmpLoader.h>
 #include <calculationStats.h>
@@ -57,61 +58,72 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     outerStats.startInterval();
 
 
-    AbstractBuffer<uint64_t> leftCensus  = AbstractBuffer<uint64_t>(height, width);
-    AbstractBuffer<uint64_t> rightCensus = AbstractBuffer<uint64_t>(height, width);
-    makeCensus(leftGrayImage, &leftCensus);
-    makeCensus(rightGrayImage, &rightCensus);
+    AbstractBuffer<uint64_t> *leftCensus  = new AbstractBuffer<uint64_t>(height, width);
+    AbstractBuffer<uint64_t> *rightCensus = new AbstractBuffer<uint64_t>(height, width);
+    makeCensus(leftGrayImage, leftCensus);
+    makeCensus(rightGrayImage, rightCensus);
     outerStats.resetInterval("Making census");
 
-    for (int d = 0; d < width / 3; ++d) {
-        Statistics stats;
-        stats.startInterval();
-        Matrix costs = Matrix(height, width);
-        std::cerr << "Matrix construction: " << stats.helperTimer.usecsToNow() << "\n";
-        stats.resetInterval("Matrix construction");
+    parallelable_for(0, width / 3,
+                     [this, &minCosts, &bestDisparities, &leftImage, &rightImage,
+                     &leftCensus, &rightCensus, &collector, height, width](const BlockedRange<int> &r)
+    {
+        for (int d = r.begin(); d != r.end(); ++d) {
+            Statistics stats;
+            stats.startInterval();
+            Matrix costs = Matrix(height, width);
+            //std::cerr << "Matrix construction: " << stats.helperTimer.usecsToNow() << "\n";
+            stats.resetInterval("Matrix construction");
 
-        for (int y = windowHh; y < height - windowHh; ++y) {
-            for (int x = windowWh + d; x < width - windowWh; ++x) {
-                //auto c_ad = costAD(leftImage, rightImage, x, y, d);
-                double c_ad = RGBColor::diff(leftImage->element(y, x), rightImage->element(y, x- d)).brightness();
-                double c_census = hammingDist(leftCensus.element(y, x), rightCensus.element(y, x - d));
+            parallelable_for(windowHh, height - windowHh,
+                             [this, &costs, &leftImage, &rightImage, &leftCensus, &rightCensus, d, width](const BlockedRange<int> &r)
+            {
+                for (int y = r.begin(); y != r.end(); ++y) {
+                    for (int x = windowWh + d; x < width - windowWh; ++x) {
+                        //auto c_ad = costAD(leftImage, rightImage, x, y, d);
+                        double c_ad = RGBColor::diff(leftImage->element(y, x), rightImage->element(y, x - d)).brightness();
+                        double c_census = hammingDist(leftCensus->element(y, x), rightCensus->element(y, x - d));
 
-                costs.element(y, x) = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
+                        costs.element(y, x) = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
+                    }
+                }
+
             }
-        }
+            );
 
-        std::cerr << "Cost computation: " << stats.helperTimer.usecsToNow() << "\n";
-        stats.resetInterval("Cost computation");
+            //        std::cerr << "Cost computation: " << stats.helperTimer.usecsToNow() << "\n";
+            stats.resetInterval("Cost computation");
 
-        aggregateCosts(&costs, leftImage, windowWh + d, windowHh, width - windowWh, height - windowHh);
+            aggregateCosts(&costs, leftImage, windowWh + d, windowHh, width - windowWh, height - windowHh);
 
-        std::cerr << "Cost aggregation: " << stats.helperTimer.usecsToNow() << "\n";
-        stats.resetInterval("Cost aggregation");
+            //        std::cerr << "Cost aggregation: " << stats.helperTimer.usecsToNow() << "\n";
+            stats.resetInterval("Cost aggregation");
 
-        for (int x = windowWh + d; x < width - windowWh; ++x) {
-            for (int y = windowHh; y < height - windowHh; ++y) {
-                if(minCosts.element(y, x) < 0 || costs.element(y, x) < minCosts.element(y, x)) {
-                    minCosts.element(y, x) = costs.element(y, x);
-                    bestDisparities.element(y, x) = d;
+            for (int x = windowWh + d; x < width - windowWh; ++x) {
+                for (int y = windowHh; y < height - windowHh; ++y) {
+                    if(minCosts.element(y, x) < 0 || costs.element(y, x) < minCosts.element(y, x)) {
+                        minCosts.element(y, x) = costs.element(y, x);
+                        bestDisparities.element(y, x) = d;
 
-                    //result.element(y,x) = RGBColor::gray(bestDisparities.element(y, x) / (double)width * 255 * 3);
+                        //result.element(y,x) = RGBColor::gray(bestDisparities.element(y, x) / (double)width * 255 * 3);
 
-                    /*result.setPixel(x, y, QColor((double)bestDisparities.element(y, x) / (double)width * 255 * 3,
+                        /*result.setPixel(x, y, QColor((double)bestDisparities.element(y, x) / (double)width * 255 * 3,
                                                       (double)bestDisparities.element(y, x) / (double)width * 255 * 3,
                                                       (double)bestDisparities.element(y, x) / (double)width * 255 * 3));*/
+                    }
                 }
             }
+            //BMPLoader().save("../../result.bmp", &result);
+
+            //std::cerr << "Comparing with previous and saving result: " << stats.helperTimer.usecsToNow() << "\n";
+            stats.endInterval("Comparing with previous and saving result");
+
+            //std::cerr << d << "\n";
+
+            collector.addStatistics(stats);
+
         }
-        BMPLoader().save("../../result.bmp", &result);
-
-        std::cerr << "Comparing with previous and saving result: " << stats.helperTimer.usecsToNow() << "\n";
-        stats.endInterval("Comparing with previous and saving result");
-
-        std::cerr << d << "\n";
-
-        collector.addStatistics(stats);
-
-    }
+    });
     for (int x = 0; x < width; ++x) {
         for (int y = 0; y < height; ++y) {
             result.element(y,x) = RGBColor::gray(bestDisparities.element(y, x) / (double)width * 255 * 3);
