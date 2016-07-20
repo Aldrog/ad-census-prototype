@@ -64,9 +64,17 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     makeCensus(rightGrayImage, rightCensus);
     outerStats.resetInterval("Making census");
 
+    for (uint i = 0; i < CORE_COUNT_OF(table1); i++)
+    {
+        table1[i] = robust(i, lambdaCT);
+        table2[i] = robust(i, lambdaAD);
+    }
+
+    bool parallelDisp = true;
+
     parallelable_for(0, width / 3,
                      [this, &minCosts, &bestDisparities, &leftImage, &rightImage,
-                     &leftCensus, &rightCensus, &collector, height, width](const BlockedRange<int> &r)
+                     &leftCensus, &rightCensus, &collector, height, width, parallelDisp](const BlockedRange<int> &r)
     {
         for (int d = r.begin(); d != r.end(); ++d) {
             Statistics stats;
@@ -79,24 +87,62 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                              [this, &costs, &leftImage, &rightImage, &leftCensus, &rightCensus, d, width](const BlockedRange<int> &r)
             {
                 for (int y = r.begin(); y != r.end(); ++y) {
-                    for (int x = windowWh + d; x < width - windowWh; ++x) {
-                        //auto c_ad = costAD(leftImage, rightImage, x, y, d);
-                        double c_ad = RGBColor::diff(leftImage->element(y, x), rightImage->element(y, x - d)).brightness();
-                        double c_census = hammingDist(leftCensus->element(y, x), rightCensus->element(y, x - d));
+                    RGBColor *im1 = &leftImage->element(y, windowWh + d);
+                    RGBColor *im2 = &rightImage->element(y, windowWh);
 
-                        costs.element(y, x) = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
+                    uint64_t *cen1 = &leftCensus->element(y, windowWh + d);
+                    uint64_t *cen2 = &rightCensus->element(y, windowWh);
+
+                    int x = windowWh + d;
+
+#ifdef WITH_SSE_UNIMPL
+                    for (; x < width - windowWh; x += 8) {
+                        FixedVector<Int16x8, 4> c1 = SSEReader8BBBB_DDDD::read((uint32_t *)im1);
+                        FixedVector<Int16x8, 4> c2 = SSEReader8BBBB_DDDD::read((uint32_t *)im2);
+
+                        Int16x8 dr = SSEMath::difference(c1[RGBColor::FIELD_R], c2[RGBColor::FIELD_R]);
+                        Int16x8 dg = SSEMath::difference(c1[RGBColor::FIELD_G], c2[RGBColor::FIELD_G]);
+                        Int16x8 db = SSEMath::difference(c1[RGBColor::FIELD_B], c2[RGBColor::FIELD_B]);
+
+                        Int16x8 sum = dr + dg + db;
+                        sum /= Int16x8(4);
+
+                        Int64x2 cen10(&cen1[0]);
+                        Int64x2 cen12(&cen1[2]);
+                        Int64x2 cen14(&cen1[4]);
+                        Int64x2 cen16(&cen1[6]);
+
+                        Int64x2 cen20(&cen2[0]);
+                        Int64x2 cen22(&cen2[2]);
+                        Int64x2 cen24(&cen2[4]);
+                        Int64x2 cen26(&cen2[6]);
+
+                        (cen10 ^ cen20).
+
+                    }
+#endif
+                    for (; x < width - windowWh; ++x) {
+                        uint8_t c_ad = RGBColor::diff(*im1, *im2).brightness();
+                        uint8_t c_census = hammingDist(*cen1, *cen2);
+
+                        costs.element(y, x) = robustLUTCen(c_census) + robustLUTAD(c_ad);
+
+                        im1 ++;
+                        im2 ++;
+                        cen1++;
+                        cen2++;
                     }
                 }
 
-            }
+            }, !parallelDisp
             );
 
-            //        std::cerr << "Cost computation: " << stats.helperTimer.usecsToNow() << "\n";
+            //std::cerr << "Cost computation: " << stats.helperTimer.usecsToNow() << "\n";
             stats.resetInterval("Cost computation");
 
             aggregateCosts(&costs, leftImage, windowWh + d, windowHh, width - windowWh, height - windowHh);
 
-            //        std::cerr << "Cost aggregation: " << stats.helperTimer.usecsToNow() << "\n";
+            //std::cerr << "Cost aggregation: " << stats.helperTimer.usecsToNow() << "\n";
             stats.resetInterval("Cost aggregation");
 
             for (int x = windowWh + d; x < width - windowWh; ++x) {
@@ -123,7 +169,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
             collector.addStatistics(stats);
 
         }
-    });
+    }, parallelDisp);
     for (int x = 0; x < width; ++x) {
         for (int y = 0; y < height; ++y) {
             result.element(y,x) = RGBColor::gray(bestDisparities.element(y, x) / (double)width * 255 * 3);
@@ -194,7 +240,8 @@ double ADCensus::costCensus(RGB24Buffer* leftImage, RGB24Buffer* rightImage, int
     return (double)result; //hammingDist(leftCT, rightCT);
 }
 
-int ADCensus::hammingDist(uint64_t a, uint64_t b) {
+inline int ADCensus::hammingDist(uint64_t a, uint64_t b) {
+#ifdef OLD_STYLE
     int result = 0;
     uint64_t diff = a ^ b;
     while(diff != 0) {
@@ -208,11 +255,24 @@ int ADCensus::hammingDist(uint64_t a, uint64_t b) {
     }
     */
     return result;
+#else
+    return _mm_popcnt_u64(a^b);
+#endif
 }
 
 double ADCensus::robust(double cost, double lambda) {
     return (1 - exp(-cost / lambda));
 }
+
+
+double ADCensus::robustLUTCen(uint8_t in) {
+    return table1[in];
+}
+
+double ADCensus::robustLUTAD(uint8_t in) {
+    return table2[in];
+}
+
 
 void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int leftBorder, int topBorder, int width, int height) {
     auto rlAggregation = Matrix(height, width);

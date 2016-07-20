@@ -28,6 +28,12 @@ private:
     const int anyAggregationArmColorThreshold = 20;
     const int maxAggregationArmColorThreshold = 6;
 
+    double table1[256];
+    double table2[256];
+
+    double robustLUTCen(uint8_t in);
+    double robustLUTAD(uint8_t in);
+
     double costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity);
     double costCensus(corecvs::RGB24Buffer *leftImage, corecvs::RGB24Buffer *rightImage, int x, int y, int disparity);
     void makeCensus(corecvs::G8Buffer *image, corecvs::AbstractBuffer<uint64_t> *census);
