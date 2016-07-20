@@ -30,7 +30,8 @@ private:
 
     double costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity);
     double costCensus(corecvs::RGB24Buffer *leftImage, corecvs::RGB24Buffer *rightImage, int x, int y, int disparity);
-    int hammingDist(int64_t a, int64_t b);
+    void makeCensus(corecvs::G8Buffer *image, corecvs::AbstractBuffer<uint64_t> *census);
+    int hammingDist(uint64_t a, uint64_t b);
     double robust(double cost, double lambda);
     void aggregateCosts(corecvs::Matrix *costs, corecvs::RGB24Buffer * image, int leftBorder, int topBorder, int width, int height);
 

@@ -18,16 +18,6 @@ ADCensus::ADCensus(QObject *parent) : QObject(parent)
 
 using corecvs::Matrix;
 
-/*
-void makeCensus(RGB24Buffer *leftImage, AbstractBuffer<uint64_t> *census)
-{
-    if (!leftImage->hasSameSize(census))
-        return;
-    census->element(i,j) =
-
-}
-*/
-
 void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     // Initialization
 
@@ -48,8 +38,6 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     G8Buffer *leftGrayImage  =  leftImage->getChannel(ImageChannel::GRAY);
     G8Buffer *rightGrayImage = rightImage->getChannel(ImageChannel::GRAY);
 
-
-
     int width = leftImage->w;
     int height = leftImage->h;
 
@@ -58,7 +46,6 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     outerStats.setValue("H", height);
     outerStats.setValue("W", width);
 
-
     //QImage result(width, height, QImage::Format_RGB32);
     RGB24Buffer result(leftImage->getSize());
 
@@ -66,7 +53,10 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     Matrix minCosts = Matrix(height, width);
     minCosts.fillWith(-1.0);
 
-    AbstractBuffer<uint64_t> leftCesus;
+    AbstractBuffer<uint64_t> leftCensus  = AbstractBuffer<uint64_t>(height, width);
+    AbstractBuffer<uint64_t> rightCensus = AbstractBuffer<uint64_t>(height, width);
+    makeCensus(leftGrayImage, &leftCensus);
+    makeCensus(rightGrayImage, &rightCensus);
 
     // Disparity computation
     outerStats.startInterval();
@@ -81,7 +71,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
             for (int y = windowHh; y < height - windowHh; ++y) {
                 //auto c_ad = costAD(leftImage, rightImage, x, y, d);
                 double c_ad = RGBColor::diff(leftImage->element(y, x), rightImage->element(y, x- d)).brightness();
-                double c_census = costCensus(leftImage, rightImage, x, y, d);
+                double c_census = hammingDist(leftCensus.element(y, x), rightCensus.element(y, x - d));
 
                 costs.element(y, x) = robust(c_census, lambdaCT) + robust(c_ad, lambdaAD);
             }
@@ -143,6 +133,25 @@ double ADCensus::costAD(QImage leftImage, QImage rightImage, int x, int y, int d
 }
 #endif
 
+void ADCensus::makeCensus(G8Buffer *image, AbstractBuffer<uint64_t> *census)
+{
+    if (!image->hasSameSize(census->h, census->w))
+        return;
+    for (int y = windowHh; y < image->h - windowHh; ++y) {
+        for (int x = windowWh; x < image->w - windowWh; ++x) {
+            uint8_t center = image->element(y, x);
+            for (int i = -windowHh; i < windowHh; ++i) {
+                for (int j = -windowWh; j < windowWh; ++j) {
+                    if(i != 0 || j != 0) {
+                        census->element(y, x) = census->element(y, x) << 1;
+                        census->element(y, x) += image->element(y + i, x + j) >= center;
+                    }
+                }
+            }
+        }
+    }
+}
+
 double ADCensus::costCensus(RGB24Buffer* leftImage, RGB24Buffer* rightImage, int x, int y, int disparity) {
     //int64_t leftCT = 0;
     //int64_t rightCT = 0;
@@ -170,14 +179,19 @@ double ADCensus::costCensus(RGB24Buffer* leftImage, RGB24Buffer* rightImage, int
     return (double)result; //hammingDist(leftCT, rightCT);
 }
 
-int ADCensus::hammingDist(int64_t a, int64_t b) {
+int ADCensus::hammingDist(uint64_t a, uint64_t b) {
     int result = 0;
-    for (uint i = 0; i < sizeof(a) * 8; ++i) {
-        if((a | 1) != (b | 1))
-            result++;
-        a = a >> 1;
-        b = b >> 1;
+    uint64_t diff = a ^ b;
+    while(diff != 0) {
+        result++;
+        diff = diff & (diff - 1);
     }
+    /*
+    while(diff != 0) {
+        result += (diff & 1);
+        diff = diff >> 1;
+    }
+    */
     return result;
 }
 
@@ -187,8 +201,8 @@ double ADCensus::robust(double cost, double lambda) {
 
 void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int leftBorder, int topBorder, int width, int height) {
     auto rlAggregation = Matrix(height, width);
-    for (int x = leftBorder; x < width; ++x) {
-        for (int y = topBorder; y < height; ++y) {
+    for (int y = topBorder; y < height; ++y) {
+        for (int x = leftBorder; x < width; ++x) {
             RGBColor currentPixel = image->element(y, x);
             int dx = 1;
             int i;
@@ -217,8 +231,8 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
         }
     }
 
-    for (int x = leftBorder; x < width; ++x) {
-        for (int y = topBorder; y < height; ++y) {
+    for (int y = topBorder; y < height; ++y) {
+        for (int x = leftBorder; x < width; ++x) {
             RGBColor currentPixel = image->element(y, x);
             int dy = 1;
             int i;
