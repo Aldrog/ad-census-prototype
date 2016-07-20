@@ -53,13 +53,16 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     Matrix minCosts = Matrix(height, width);
     minCosts.fillWith(-1.0);
 
+    // Disparity computation
+    outerStats.startInterval();
+
+
     AbstractBuffer<uint64_t> leftCensus  = AbstractBuffer<uint64_t>(height, width);
     AbstractBuffer<uint64_t> rightCensus = AbstractBuffer<uint64_t>(height, width);
     makeCensus(leftGrayImage, &leftCensus);
     makeCensus(rightGrayImage, &rightCensus);
+    outerStats.resetInterval("Making census");
 
-    // Disparity computation
-    outerStats.startInterval();
     for (int d = 0; d < width / 3; ++d) {
         Statistics stats;
         stats.startInterval();
@@ -67,8 +70,8 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
         std::cerr << "Matrix construction: " << stats.helperTimer.usecsToNow() << "\n";
         stats.resetInterval("Matrix construction");
 
-        for (int x = windowWh + d; x < width - windowWh; ++x) {
-            for (int y = windowHh; y < height - windowHh; ++y) {
+        for (int y = windowHh; y < height - windowHh; ++y) {
+            for (int x = windowWh + d; x < width - windowWh; ++x) {
                 //auto c_ad = costAD(leftImage, rightImage, x, y, d);
                 double c_ad = RGBColor::diff(leftImage->element(y, x), rightImage->element(y, x- d)).brightness();
                 double c_census = hammingDist(leftCensus.element(y, x), rightCensus.element(y, x - d));
@@ -91,7 +94,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                     minCosts.element(y, x) = costs.element(y, x);
                     bestDisparities.element(y, x) = d;
 
-                    result.element(y,x) = RGBColor::gray(bestDisparities.element(y, x) / (double)width * 255 * 3);
+                    //result.element(y,x) = RGBColor::gray(bestDisparities.element(y, x) / (double)width * 255 * 3);
 
                     /*result.setPixel(x, y, QColor((double)bestDisparities.element(y, x) / (double)width * 255 * 3,
                                                       (double)bestDisparities.element(y, x) / (double)width * 255 * 3,
