@@ -1,6 +1,5 @@
 #include <iostream>
 #include <cmath>
-
 #include "astNode.h"
 
 namespace corecvs {
