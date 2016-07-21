@@ -23,26 +23,29 @@ public slots:
     void constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl);
 
 private:
+
+#define COST_TYPE uint16_t
+
     const int maxAggregationArmLen = 34;
     const int avgAggregationArmLen = 17;
     const int anyAggregationArmColorThreshold = 20;
     const int maxAggregationArmColorThreshold = 6;
 
-    double table1[256];
-    double table2[256];
+    COST_TYPE table1[256];
+    COST_TYPE table2[256];
 
-    double robustLUTCen(uint8_t in);
-    double robustLUTAD(uint8_t in);
+    COST_TYPE robustLUTCen(uint8_t in);
+    COST_TYPE robustLUTAD(uint8_t in);
 
     double costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity);
     double costCensus(corecvs::RGB24Buffer *leftImage, corecvs::RGB24Buffer *rightImage, int x, int y, int disparity);
     void makeCensus(corecvs::G8Buffer *image, corecvs::AbstractBuffer<uint64_t> *census);
     uint8_t hammingDist(uint64_t a, uint64_t b);
-    double robust(uint8_t cost, double lambda);
-    void aggregateCosts(corecvs::Matrix *costs, corecvs::RGB24Buffer * image, int leftBorder, int topBorder, int width, int height);
+    COST_TYPE robust(uint8_t cost, double lambda);
+    void aggregateCosts(AbstractBuffer<COST_TYPE> *costs, corecvs::RGB24Buffer * image, int leftBorder, int topBorder, int width, int height);
 
     template <int sx, int sy>
-    double sumArm(corecvs::Matrix *costs, corecvs::RGB24Buffer *image, int *length,
+    COST_TYPE sumArm(corecvs::AbstractBuffer<COST_TYPE> *costs, corecvs::RGB24Buffer *image, int *length,
                   int x, int y, int leftBorder, int topBorder, int width, int height);
 
     inline int colorDifference(QColor a, QColor b) {

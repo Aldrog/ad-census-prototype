@@ -13,6 +13,8 @@ const double lambdaAD = 30.0;
 const int windowWh = 4;
 const int windowHh = 3;
 
+const uint64_t robustPrecision = 127;
+
 ADCensus::ADCensus(QObject *parent) : QObject(parent)
 {
 }
@@ -50,13 +52,12 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     //QImage result(width, height, QImage::Format_RGB32);
     RGB24Buffer result(leftImage->getSize());
 
-    auto bestDisparities = Matrix(height, width);
-    Matrix minCosts = Matrix(height, width);
-    minCosts.fillWith(-1.0);
+    auto bestDisparities = AbstractBuffer<uint32_t>(height, width);
+    AbstractBuffer<COST_TYPE> minCosts = AbstractBuffer<COST_TYPE>(height, width);
+    minCosts.fillWith(-1);
 
     // Disparity computation
     outerStats.startInterval();
-
 
     AbstractBuffer<uint64_t> *leftCensus  = new AbstractBuffer<uint64_t>(height, width);
     AbstractBuffer<uint64_t> *rightCensus = new AbstractBuffer<uint64_t>(height, width);
@@ -79,7 +80,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
         for (int d = r.begin(); d != r.end(); ++d) {
             Statistics stats;
             stats.startInterval();
-            Matrix costs = Matrix(height, width);
+            AbstractBuffer<COST_TYPE> costs = AbstractBuffer<COST_TYPE>(height, width);
             //std::cerr << "Matrix construction: " << stats.helperTimer.usecsToNow() << "\n";
             stats.resetInterval("Matrix construction");
 
@@ -147,7 +148,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
 
             for (int x = windowWh + d; x < width - windowWh; ++x) {
                 for (int y = windowHh; y < height - windowHh; ++y) {
-                    if(minCosts.element(y, x) < 0 || costs.element(y, x) < minCosts.element(y, x)) {
+                    if(costs.element(y, x) < minCosts.element(y, x)) {
                         minCosts.element(y, x) = costs.element(y, x);
                         bestDisparities.element(y, x) = d;
 
@@ -260,22 +261,22 @@ inline uint8_t ADCensus::hammingDist(uint64_t a, uint64_t b) {
 #endif
 }
 
-double ADCensus::robust(uint8_t cost, double lambda) {
-    return (1 - exp(-cost / lambda));
+COST_TYPE ADCensus::robust(uint8_t cost, double lambda) {
+    return (1 - exp(-cost / lambda)) * robustPrecision;
 }
 
 
-double ADCensus::robustLUTCen(uint8_t in) {
+COST_TYPE ADCensus::robustLUTCen(uint8_t in) {
     return table1[in];
 }
 
-double ADCensus::robustLUTAD(uint8_t in) {
+COST_TYPE ADCensus::robustLUTAD(uint8_t in) {
     return table2[in];
 }
 
 
-void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int leftBorder, int topBorder, int width, int height) {
-    Matrix *rlAggregation = new Matrix(height, width);
+void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, RGB24Buffer *image, int leftBorder, int topBorder, int width, int height) {
+    AbstractBuffer<COST_TYPE> *rlAggregation = new AbstractBuffer<COST_TYPE>(height, width);
     for (int y = topBorder; y < height; ++y) {
         for (int x = leftBorder; x < width; ++x) {
             int len = 1;
@@ -298,7 +299,7 @@ void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int le
 }
 
 template<int sx, int sy>
-double ADCensus::sumArm(Matrix *costs, RGB24Buffer *image, int *length,
+COST_TYPE ADCensus::sumArm(AbstractBuffer<COST_TYPE> *costs, RGB24Buffer *image, int *length,
                         int x, int y, int leftBorder, int topBorder, int width, int height) {
     double result = 0;
     RGBColor currentPixel = image->element(y, x);
