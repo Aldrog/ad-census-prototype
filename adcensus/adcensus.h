@@ -37,9 +37,13 @@ private:
     double costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity);
     double costCensus(corecvs::RGB24Buffer *leftImage, corecvs::RGB24Buffer *rightImage, int x, int y, int disparity);
     void makeCensus(corecvs::G8Buffer *image, corecvs::AbstractBuffer<uint64_t> *census);
-    int hammingDist(uint64_t a, uint64_t b);
-    double robust(double cost, double lambda);
+    uint8_t hammingDist(uint64_t a, uint64_t b);
+    double robust(uint8_t cost, double lambda);
     void aggregateCosts(corecvs::Matrix *costs, corecvs::RGB24Buffer * image, int leftBorder, int topBorder, int width, int height);
+
+    template <int sx, int sy>
+    double sumArm(corecvs::Matrix *costs, corecvs::RGB24Buffer *image, int *length,
+                  int x, int y, int leftBorder, int topBorder, int width, int height);
 
     inline int colorDifference(QColor a, QColor b) {
         return std::max( std::max(

@@ -240,7 +240,7 @@ double ADCensus::costCensus(RGB24Buffer* leftImage, RGB24Buffer* rightImage, int
     return (double)result; //hammingDist(leftCT, rightCT);
 }
 
-inline int ADCensus::hammingDist(uint64_t a, uint64_t b) {
+inline uint8_t ADCensus::hammingDist(uint64_t a, uint64_t b) {
 #ifdef OLD_STYLE
     int result = 0;
     uint64_t diff = a ^ b;
@@ -260,7 +260,7 @@ inline int ADCensus::hammingDist(uint64_t a, uint64_t b) {
 #endif
 }
 
-double ADCensus::robust(double cost, double lambda) {
+double ADCensus::robust(uint8_t cost, double lambda) {
     return (1 - exp(-cost / lambda));
 }
 
@@ -275,63 +275,48 @@ double ADCensus::robustLUTAD(uint8_t in) {
 
 
 void ADCensus::aggregateCosts(corecvs::Matrix *costs, RGB24Buffer *image, int leftBorder, int topBorder, int width, int height) {
-    auto rlAggregation = Matrix(height, width);
+    Matrix *rlAggregation = new Matrix(height, width);
     for (int y = topBorder; y < height; ++y) {
         for (int x = leftBorder; x < width; ++x) {
-            RGBColor currentPixel = image->element(y, x);
-            int dx = 1;
-            int i;
-            rlAggregation.element(y, x) = costs->element(y, x);
-            // Right arm
-            for (i = 1; x + i < width; ++i) {
-                RGBColor toAddPixel = image->element(y, x + i);
-                RGBColor prevPixel = image->element(y, x + (i - 1));
-
-                if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
-                    break;
-                rlAggregation.element(y, x) += costs->element(y, x + i);
-            }
-            dx += i - 1;
-            // Left arm
-            for (i = 1; x - i > leftBorder; ++i) {
-                RGBColor toAddPixel = image->element(y, x - i);
-                RGBColor prevPixel = image->element(y, x - (i - 1));
-
-                if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
-                    break;
-                rlAggregation.element(y, x) += costs->element(y, x - i);
-            }
-            dx += i - 1;
-            rlAggregation.element(y, x) /= dx;
+            int len = 1;
+            rlAggregation->element(y, x) = sumArm<1, 0>(costs, image, &len, x, y, leftBorder, topBorder, width, height);
+            rlAggregation->element(y, x) += sumArm<-1, 0>(costs, image, &len, x, y, leftBorder, topBorder, width, height);
+            rlAggregation->element(y, x) += costs->element(y, x);
+            rlAggregation->element(y, x) /= len;
         }
     }
 
     for (int y = topBorder; y < height; ++y) {
         for (int x = leftBorder; x < width; ++x) {
-            RGBColor currentPixel = image->element(y, x);
-            int dy = 1;
-            int i;
-            // Top arm
-            for (i = 1; y + i < height; ++i) {
-                RGBColor toAddPixel = image->element(y + i, x);
-                RGBColor prevPixel = image->element(y + (i - 1), x);
-
-                if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
-                    break;
-                costs->element(y, x) += rlAggregation.element(y + i, x);
-            }
-            dy += i - 1;
-            // Bottom arm
-            for (i = 1; y - i > topBorder; ++i) {
-                RGBColor toAddPixel = image->element(y - i, x);
-                RGBColor prevPixel = image->element(y - (i - 1), x);
-
-                if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
-                    break;
-                costs->element(y, x) += rlAggregation.element(y - i, x);
-            }
-            dy += i - 1;
-            costs->element(y, x) /= dy;
+            int len = 1;
+            costs->element(y, x) = sumArm<0, 1>(rlAggregation, image, &len, x, y, leftBorder, topBorder, width, height);
+            costs->element(y, x) += sumArm<0, -1>(rlAggregation, image, &len, x, y, leftBorder, topBorder, width, height);
+            costs->element(y, x) += rlAggregation->element(y, x);
+            costs->element(y, x) /= len;
         }
     }
+}
+
+template<int sx, int sy>
+double ADCensus::sumArm(Matrix *costs, RGB24Buffer *image, int *length,
+                        int x, int y, int leftBorder, int topBorder, int width, int height) {
+    double result = 0;
+    RGBColor currentPixel = image->element(y, x);
+
+    int i;
+    for (i = 1; ; ++i) {
+        if(x + i * sx >= width ||
+           x + i * sx < leftBorder ||
+           y + i * sy >= height ||
+           y + i * sy < topBorder)
+            break;
+        RGBColor toAddPixel = image->element(y + i * sy, x + i * sx);
+        RGBColor prevPixel = image->element(y + (i - 1) * sy, x + (i - 1) * sx);
+
+        if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
+            break;
+        result += costs->element(y + i * sy, x + i * sx);
+    }
+    *length += i - 1;
+    return result;
 }
