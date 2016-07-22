@@ -58,24 +58,6 @@ private:
 
     void aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, int topBorder, int width, int height);
 
-    void initGrayscale(G8Buffer *leftGrayscale, G8Buffer *rightGrayscale, RGB24Buffer *leftImage, RGB24Buffer *rightImage);
-    void initGrayscale(G8Buffer *leftGrayscale, G8Buffer *rightGrayscale, G12Buffer *leftImage, G12Buffer *rightImage);
-
-    void aggregateCosts(AbstractBuffer<COST_TYPE> *costs, corecvs::RGB24Buffer *image, int leftBorder, int topBorder, int width, int height);
-    double costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity);
-    double costCensus(corecvs::RGB24Buffer *leftImage, corecvs::RGB24Buffer *rightImage, int x, int y, int disparity);
-
-    template <int sx, int sy>
-    COST_TYPE sumArm(corecvs::AbstractBuffer<COST_TYPE> *costs, corecvs::RGB24Buffer *image, int *length,
-                  int x, int y, int leftBorder, int topBorder, int width, int height);
-
-    inline int colorDifference(QColor a, QColor b) {
-        return std::max( std::max(
-                            abs(a.red() - b.red()),
-                            abs(a.green() - b.green()) ),
-                            abs(a.blue() - b.blue()) );
-    }
-
     inline int colorDifference(const RGBColor &a, const RGBColor &b) {
         return RGBColor::diff(a, b).maximum();
     }
