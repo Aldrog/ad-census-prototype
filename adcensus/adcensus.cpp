@@ -18,7 +18,7 @@ const double lambdaAD = 30.0;
 const int windowWh = 4;
 const int windowHh = 3;
 
-const uint64_t robustPrecision = 127;
+const COST_TYPE robustPrecision = 127;
 
 ADCensus::ADCensus(QObject *parent) : QObject(parent)
 {
@@ -43,7 +43,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     RGB24Buffer *leftImage  = BMPLoader().loadRGB(left);
     RGB24Buffer *rightImage = BMPLoader().loadRGB(right);
 
-    G8Buffer *leftGrayImage  =  leftImage->getChannel(ImageChannel::GRAY);
+    G8Buffer *leftGrayImage  = leftImage->getChannel(ImageChannel::GRAY);
     G8Buffer *rightGrayImage = rightImage->getChannel(ImageChannel::GRAY);
 
     int width = leftImage->w;
@@ -191,6 +191,13 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     collector.addStatistics(outerStats);
     collector.printAdvanced();
     fflush(stdout);
+
+    delete leftImage;
+    delete rightImage;
+    delete leftGrayImage;
+    delete rightGrayImage;
+    delete leftCensus;
+    delete rightCensus;
 }
 
 #if 0
@@ -346,6 +353,7 @@ void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, 
             costs->element(y, x) /= len;
         }
     }
+    delete rlAggregation;
 }
 
 void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, RGB24Buffer *image, int leftBorder, int topBorder, int width, int height) {
