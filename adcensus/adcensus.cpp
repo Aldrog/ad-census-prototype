@@ -115,7 +115,6 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
             Statistics stats;
             stats.startInterval();
             AbstractBuffer<COST_TYPE> costs = AbstractBuffer<COST_TYPE>(height, width);
-            //std::cerr << "Matrix construction: " << stats.helperTimer.usecsToNow() << "\n";
             stats.resetInterval("Matrix construction");
 
             parallelable_for(windowHh, height - windowHh,
@@ -209,8 +208,7 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
 }
 
 template<typename pixel>
-void ADCensus::makeCensus(AbstractBuffer<pixel> *image, AbstractBuffer<uint64_t> *census)
-{
+void ADCensus::makeCensus(AbstractBuffer<pixel> *image, AbstractBuffer<uint64_t> *census) {
     if (!image->hasSameSize(census->h, census->w))
         return;
     for (int y = windowHh; y < image->h - windowHh; ++y) {
@@ -287,12 +285,11 @@ void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, 
     AbstractBuffer<COST_TYPE> *rlAggregation = new AbstractBuffer<COST_TYPE>(height, width);
     for (int y = topBorder; y < height; ++y) {
         for (int x = leftBorder; x < width; ++x) {
-            int len = 0;
-            for (int curX = std::max(x - aggregationCrosses.element(y, x)[DIR_LEFT], leftBorder);
-                     curX <= std::min(x + aggregationCrosses.element(y, x)[DIR_RIGHT], width - 1);
-                     ++curX) {
+            int start = std::max(x - aggregationCrosses.element(y, x)[DIR_LEFT], leftBorder);
+            int end = std::min(x + aggregationCrosses.element(y, x)[DIR_RIGHT], width - 1);
+            int len = end - start + 1;
+            for (int curX = start; curX <= end; ++curX) {
                 rlAggregation->element(y, x) += costs->element(y, curX);
-                len++;
             }
             rlAggregation->element(y, x) /= len;
         }
@@ -300,12 +297,11 @@ void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, 
     costs->fillWith(0);
     for (int y = topBorder; y < height; ++y) {
         for (int x = leftBorder; x < width; ++x) {
-            int len = 0;
-            for (int curY = std::max(y - aggregationCrosses.element(y, x)[DIR_UP], topBorder);
-                     curY <= std::min(y + aggregationCrosses.element(y, x)[DIR_DOWN], height - 1);
-                     ++curY) {
+            int start = std::max(y - aggregationCrosses.element(y, x)[DIR_UP], topBorder);
+            int end = std::min(y + aggregationCrosses.element(y, x)[DIR_DOWN], height - 1);
+            int len = end - start + 1;
+            for (int curY = start; curY <= end; ++curY) {
                 costs->element(y, x) += rlAggregation->element(curY, x);
-                len++;
             }
             costs->element(y, x) /= len;
         }
