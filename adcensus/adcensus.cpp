@@ -7,6 +7,11 @@
 #include <calculationStats.h>
 #include <cmath>
 
+#define DIR_RIGHT 0
+#define DIR_LEFT 1
+#define DIR_DOWN 2
+#define DIR_UP 3
+
 const double lambdaCT = 10.0;
 const double lambdaAD = 30.0;
 
@@ -64,6 +69,9 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     makeCensus(leftGrayImage, leftCensus);
     makeCensus(rightGrayImage, rightCensus);
     outerStats.resetInterval("Making census");
+
+    makeAggregationCrosses(leftImage);
+    outerStats.resetInterval("Making aggregation crosses");
 
     for (uint i = 0; i < CORE_COUNT_OF(table1); i++)
     {
@@ -141,7 +149,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
             //std::cerr << "Cost computation: " << stats.helperTimer.usecsToNow() << "\n";
             stats.resetInterval("Cost computation");
 
-            aggregateCosts(&costs, leftImage, windowWh + d, windowHh, width - windowWh, height - windowHh);
+            aggregateCosts(&costs, windowWh + d, windowHh, width - windowWh, height - windowHh);
 
             //std::cerr << "Cost aggregation: " << stats.helperTimer.usecsToNow() << "\n";
             stats.resetInterval("Cost aggregation");
@@ -214,6 +222,43 @@ void ADCensus::makeCensus(G8Buffer *image, AbstractBuffer<uint64_t> *census)
     }
 }
 
+void ADCensus::makeAggregationCrosses(RGB24Buffer *image) {
+    int width = image->w;
+    int height = image->h;
+    aggregationCrosses = AbstractBuffer<Vector4d<uint8_t>>(height, width);
+    for (int y = windowHh; y < height - windowHh; ++y) {
+        for (int x = windowWh; x < width - windowWh; ++x) {
+            aggregationCrosses.element(y, x) = Vector4d<uint8_t>
+                        (
+                            makeArm<1, 0>(image, x, y),
+                            makeArm<-1, 0>(image, x, y),
+                            makeArm<0, 1>(image, x, y),
+                            makeArm<0, -1>(image, x, y)
+                        );
+        }
+    }
+}
+
+template<int sx, int sy>
+int ADCensus::makeArm(RGB24Buffer *image, int x, int y) {
+    RGBColor currentPixel = image->element(y, x);
+
+    int i;
+    for (i = 1; ; ++i) {
+        if(x + i * sx >= image->w - windowWh ||
+           x + i * sx < windowWh ||
+           y + i * sy >= image->h - windowHh ||
+           y + i * sy < windowHh)
+            break;
+        RGBColor toAddPixel = image->element(y + i * sy, x + i * sx);
+        RGBColor prevPixel = image->element(y + (i - 1) * sy, x + (i - 1) * sx);
+
+        if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
+            break;
+    }
+    return i - 1;
+}
+
 double ADCensus::costCensus(RGB24Buffer* leftImage, RGB24Buffer* rightImage, int x, int y, int disparity) {
     //int64_t leftCT = 0;
     //int64_t rightCT = 0;
@@ -274,6 +319,34 @@ COST_TYPE ADCensus::robustLUTAD(uint8_t in) {
     return table2[in];
 }
 
+void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, int topBorder, int width, int height) {
+    AbstractBuffer<COST_TYPE> *rlAggregation = new AbstractBuffer<COST_TYPE>(height, width);
+    for (int y = topBorder; y < height; ++y) {
+        for (int x = leftBorder; x < width; ++x) {
+            int len = 0;
+            for (int curX = std::max(x - aggregationCrosses.element(y, x)[DIR_LEFT], leftBorder);
+                     curX <= std::min(x + aggregationCrosses.element(y, x)[DIR_RIGHT], width - 1);
+                     ++curX) {
+                rlAggregation->element(y, x) += costs->element(y, curX);
+                len++;
+            }
+            rlAggregation->element(y, x) /= len;
+        }
+    }
+    costs->fillWith(0);
+    for (int y = topBorder; y < height; ++y) {
+        for (int x = leftBorder; x < width; ++x) {
+            int len = 0;
+            for (int curY = std::max(y - aggregationCrosses.element(y, x)[DIR_UP], topBorder);
+                     curY <= std::min(y + aggregationCrosses.element(y, x)[DIR_DOWN], height - 1);
+                     ++curY) {
+                costs->element(y, x) += rlAggregation->element(curY, x);
+                len++;
+            }
+            costs->element(y, x) /= len;
+        }
+    }
+}
 
 void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, RGB24Buffer *image, int leftBorder, int topBorder, int width, int height) {
     AbstractBuffer<COST_TYPE> *rlAggregation = new AbstractBuffer<COST_TYPE>(height, width);

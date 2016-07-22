@@ -37,12 +37,19 @@ private:
     COST_TYPE robustLUTCen(uint8_t in);
     COST_TYPE robustLUTAD(uint8_t in);
 
+    corecvs::AbstractBuffer<corecvs::Vector4d<uint8_t>> aggregationCrosses;
+
+    void makeAggregationCrosses(corecvs::RGB24Buffer *image);
+    template<int sx, int sy>
+    int makeArm(corecvs::RGB24Buffer *image, int x, int y);
+
     double costAD(QImage leftImage, QImage rightImage, int x, int y, int disparity);
     double costCensus(corecvs::RGB24Buffer *leftImage, corecvs::RGB24Buffer *rightImage, int x, int y, int disparity);
     void makeCensus(corecvs::G8Buffer *image, corecvs::AbstractBuffer<uint64_t> *census);
     uint8_t hammingDist(uint64_t a, uint64_t b);
     COST_TYPE robust(uint8_t cost, double lambda);
-    void aggregateCosts(AbstractBuffer<COST_TYPE> *costs, corecvs::RGB24Buffer * image, int leftBorder, int topBorder, int width, int height);
+    void aggregateCosts(AbstractBuffer<COST_TYPE> *costs, corecvs::RGB24Buffer *image, int leftBorder, int topBorder, int width, int height);
+    void aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, int topBorder, int width, int height);
 
     template <int sx, int sy>
     COST_TYPE sumArm(corecvs::AbstractBuffer<COST_TYPE> *costs, corecvs::RGB24Buffer *image, int *length,
