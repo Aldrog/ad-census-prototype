@@ -26,25 +26,58 @@ ADCensus::ADCensus(QObject *parent) : QObject(parent)
 
 using corecvs::Matrix;
 
-void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
-    // Initialization
-
-
-//    QImage leftImage(leftImageUrl.toLocalFile());
-//    QImage rightImage(rightImageUrl.toLocalFile());
+void ADCensus::disparityMapFromGrayscale(QUrl leftImageUrl, QUrl rightImageUrl) {
     std::string left  = leftImageUrl.toLocalFile().toStdString();
     std::string right = rightImageUrl.toLocalFile().toStdString();
 
     cout << "Opening [" << left << " " << right << "]" << endl;
 
-    //RGB24Buffer *leftImage  = BufferFactory::getInstance()->loadRGB24Bitmap(left);
-    //RGB24Buffer *rightImage = BufferFactory::getInstance()->loadRGB24Bitmap(right);
+    G12Buffer *leftImage  = BMPLoader().loadG12(left);
+    G12Buffer *rightImage = BMPLoader().loadG12(right);
+    G12Buffer *leftGray = new G12Buffer(leftImage);
+    G12Buffer *rightGray = new G12Buffer(rightImage);
+
+    G8Buffer *result = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
+    BMPLoader().save("../../result.bmp", result);
+
+    delete leftImage;
+    delete rightImage;
+    delete leftGray;
+    delete rightGray;
+    delete result;
+}
+
+void ADCensus::disparityMapFromRGB(QUrl leftImageUrl, QUrl rightImageUrl) {
+    std::string left  = leftImageUrl.toLocalFile().toStdString();
+    std::string right = rightImageUrl.toLocalFile().toStdString();
+
+    cout << "Opening [" << left << " " << right << "]" << endl;
 
     RGB24Buffer *leftImage  = BMPLoader().loadRGB(left);
     RGB24Buffer *rightImage = BMPLoader().loadRGB(right);
+    G8Buffer *leftGray = leftImage->getChannel(ImageChannel::GRAY);
+    G8Buffer *rightGray = rightImage->getChannel(ImageChannel::GRAY);
 
-    G8Buffer *leftGrayImage  = leftImage->getChannel(ImageChannel::GRAY);
-    G8Buffer *rightGrayImage = rightImage->getChannel(ImageChannel::GRAY);
+    G8Buffer *result = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
+    BMPLoader().save("../../result.bmp", result);
+
+    delete leftImage;
+    delete rightImage;
+    delete leftGray;
+    delete rightGray;
+    delete result;
+}
+
+template<typename pixel, typename grayPixel>
+G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, AbstractBuffer<pixel> *rightImage,
+                                          AbstractBuffer<grayPixel> *leftGrayImage, AbstractBuffer<grayPixel> *rightGrayImage) {
+    // Initialization
+
+
+//    QImage leftImage(leftImageUrl.toLocalFile());
+//    QImage rightImage(rightImageUrl.toLocalFile());
+    //RGB24Buffer *leftImage  = BufferFactory::getInstance()->loadRGB24Bitmap(left);
+    //RGB24Buffer *rightImage = BufferFactory::getInstance()->loadRGB24Bitmap(right);
 
     int width = leftImage->w;
     int height = leftImage->h;
@@ -55,7 +88,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     outerStats.setValue("W", width);
 
     //QImage result(width, height, QImage::Format_RGB32);
-    RGB24Buffer result(leftImage->getSize());
+    G8Buffer *result = new G8Buffer(leftImage->getSize());
 
     auto bestDisparities = AbstractBuffer<uint32_t>(height, width);
     AbstractBuffer<COST_TYPE> minCosts = AbstractBuffer<COST_TYPE>(height, width);
@@ -96,8 +129,8 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                              [this, &costs, &leftImage, &rightImage, &leftCensus, &rightCensus, d, width](const BlockedRange<int> &r)
             {
                 for (int y = r.begin(); y != r.end(); ++y) {
-                    RGBColor *im1 = &leftImage->element(y, windowWh + d);
-                    RGBColor *im2 = &rightImage->element(y, windowWh);
+                    auto *im1 = &leftImage->element(y, windowWh + d);
+                    auto *im2 = &rightImage->element(y, windowWh);
 
                     uint64_t *cen1 = &leftCensus->element(y, windowWh + d);
                     uint64_t *cen2 = &rightCensus->element(y, windowWh);
@@ -131,7 +164,7 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
                     }
 #endif
                     for (; x < width - windowWh; ++x) {
-                        uint8_t c_ad = RGBColor::diff(*im1, *im2).brightness();
+                        uint8_t c_ad = costAD(*im1, *im2);
                         uint8_t c_census = hammingDist(*cen1, *cen2);
 
                         costs.element(y, x) = robustLUTCen(c_census) + robustLUTAD(c_ad);
@@ -181,23 +214,16 @@ void ADCensus::constructDisparityMap(QUrl leftImageUrl, QUrl rightImageUrl) {
     }, parallelDisp);
     for (int x = 0; x < width; ++x) {
         for (int y = 0; y < height; ++y) {
-            result.element(y,x) = RGBColor::gray(bestDisparities.element(y, x) / (double)width * 255 * 3);
-
+            result->element(y,x) = (bestDisparities.element(y, x) / (double)width * 255 * 3);
         }
     }
-    BMPLoader().save("../../result.bmp", &result);
     std::cerr << "finished\n";
     outerStats.endInterval("Total");
     collector.addStatistics(outerStats);
     collector.printAdvanced();
     fflush(stdout);
 
-    delete leftImage;
-    delete rightImage;
-    delete leftGrayImage;
-    delete rightGrayImage;
-    delete leftCensus;
-    delete rightCensus;
+    return result;
 }
 
 #if 0
@@ -210,13 +236,14 @@ double ADCensus::costAD(QImage leftImage, QImage rightImage, int x, int y, int d
 }
 #endif
 
-void ADCensus::makeCensus(G8Buffer *image, AbstractBuffer<uint64_t> *census)
+template<typename pixel>
+void ADCensus::makeCensus(AbstractBuffer<pixel> *image, AbstractBuffer<uint64_t> *census)
 {
     if (!image->hasSameSize(census->h, census->w))
         return;
     for (int y = windowHh; y < image->h - windowHh; ++y) {
         for (int x = windowWh; x < image->w - windowWh; ++x) {
-            uint8_t center = image->element(y, x);
+            pixel center = image->element(y, x);
             for (int i = -windowHh; i < windowHh; ++i) {
                 for (int j = -windowWh; j < windowWh; ++j) {
                     if(i != 0 || j != 0) {
@@ -229,7 +256,8 @@ void ADCensus::makeCensus(G8Buffer *image, AbstractBuffer<uint64_t> *census)
     }
 }
 
-void ADCensus::makeAggregationCrosses(RGB24Buffer *image) {
+template<typename pixel>
+void ADCensus::makeAggregationCrosses(AbstractBuffer<pixel> *image) {
     int width = image->w;
     int height = image->h;
     aggregationCrosses = AbstractBuffer<Vector4d<uint8_t>>(height, width);
@@ -246,9 +274,9 @@ void ADCensus::makeAggregationCrosses(RGB24Buffer *image) {
     }
 }
 
-template<int sx, int sy>
-int ADCensus::makeArm(RGB24Buffer *image, int x, int y) {
-    RGBColor currentPixel = image->element(y, x);
+template<int sx, int sy, typename pixel>
+int ADCensus::makeArm(AbstractBuffer<pixel> *image, int x, int y) {
+    pixel currentPixel = image->element(y, x);
 
     int i;
     for (i = 1; ; ++i) {
@@ -257,8 +285,8 @@ int ADCensus::makeArm(RGB24Buffer *image, int x, int y) {
            y + i * sy >= image->h - windowHh ||
            y + i * sy < windowHh)
             break;
-        RGBColor toAddPixel = image->element(y + i * sy, x + i * sx);
-        RGBColor prevPixel = image->element(y + (i - 1) * sy, x + (i - 1) * sx);
+        pixel toAddPixel = image->element(y + i * sy, x + i * sx);
+        pixel prevPixel = image->element(y + (i - 1) * sy, x + (i - 1) * sx);
 
         if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
             break;
@@ -355,6 +383,7 @@ void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, 
     }
     delete rlAggregation;
 }
+
 
 void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, RGB24Buffer *image, int leftBorder, int topBorder, int width, int height) {
     AbstractBuffer<COST_TYPE> *rlAggregation = new AbstractBuffer<COST_TYPE>(height, width);
