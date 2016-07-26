@@ -90,8 +90,8 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
     // Disparity computation
     outerStats.startInterval();
 
-    AbstractBuffer<uint64_t> *leftCensus  = new AbstractBuffer<uint64_t>(height, width);
-    AbstractBuffer<uint64_t> *rightCensus = new AbstractBuffer<uint64_t>(height, width);
+    AbstractBuffer<int64_t> *leftCensus  = new AbstractBuffer<int64_t>(height, width);
+    AbstractBuffer<int64_t> *rightCensus = new AbstractBuffer<int64_t>(height, width);
     makeCensus(leftGrayImage, leftCensus);
     makeCensus(rightGrayImage, rightCensus);
     outerStats.resetInterval("Making census");
@@ -124,22 +124,29 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
                     auto *im1 = &leftImage->element(y, windowWh + d);
                     auto *im2 = &rightImage->element(y, windowWh);
 
-                    uint64_t *cen1 = &leftCensus->element(y, windowWh + d);
-                    uint64_t *cen2 = &rightCensus->element(y, windowWh);
+                    int64_t *cen1 = &leftCensus->element(y, windowWh + d);
+                    int64_t *cen2 = &rightCensus->element(y, windowWh);
 
                     int x = windowWh + d;
 
-#ifdef WITH_SSE_UNIMPL
+#ifdef WITH_SSE
                     for (; x < width - windowWh; x += 8) {
                         FixedVector<Int16x8, 4> c1 = SSEReader8BBBB_DDDD::read((uint32_t *)im1);
                         FixedVector<Int16x8, 4> c2 = SSEReader8BBBB_DDDD::read((uint32_t *)im2);
 
-                        Int16x8 dr = SSEMath::difference(c1[RGBColor::FIELD_R], c2[RGBColor::FIELD_R]);
-                        Int16x8 dg = SSEMath::difference(c1[RGBColor::FIELD_G], c2[RGBColor::FIELD_G]);
-                        Int16x8 db = SSEMath::difference(c1[RGBColor::FIELD_B], c2[RGBColor::FIELD_B]);
+                        UInt16x8 dr = SSEMath::difference(UInt16x8(c1[RGBColor::FIELD_R]), UInt16x8(c2[RGBColor::FIELD_R]));
+                        UInt16x8 dg = SSEMath::difference(UInt16x8(c1[RGBColor::FIELD_G]), UInt16x8(c2[RGBColor::FIELD_G]));
+                        UInt16x8 db = SSEMath::difference(UInt16x8(c1[RGBColor::FIELD_B]), UInt16x8(c2[RGBColor::FIELD_B]));
 
-                        Int16x8 sum = dr + dg + db;
-                        sum /= Int16x8(4);
+                        UInt16x8 ad = (dr + dg + db) >> 2;
+                        Int16x8 cost_ad = Int16x8(robustLUTAD(ad[0]),
+                                                  robustLUTAD(ad[1]),
+                                                  robustLUTAD(ad[2]),
+                                                  robustLUTAD(ad[3]),
+                                                  robustLUTAD(ad[4]),
+                                                  robustLUTAD(ad[5]),
+                                                  robustLUTAD(ad[6]),
+                                                  robustLUTAD(ad[7]));
 
                         Int64x2 cen10(&cen1[0]);
                         Int64x2 cen12(&cen1[2]);
@@ -151,10 +158,27 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
                         Int64x2 cen24(&cen2[4]);
                         Int64x2 cen26(&cen2[6]);
 
-                        (cen10 ^ cen20).
+                        Int64x2 diff0 = cen10 ^ cen20;
+                        Int64x2 diff2 = cen12 ^ cen22;
+                        Int64x2 diff4 = cen14 ^ cen24;
+                        Int64x2 diff6 = cen16 ^ cen26;
 
+                        Int16x8 cost_ct(robustLUTCen(_mm_popcnt_u64(diff0.getInt(0))), robustLUTCen(_mm_popcnt_u64(diff0.getInt(1))),
+                                        robustLUTCen(_mm_popcnt_u64(diff2.getInt(0))), robustLUTCen(_mm_popcnt_u64(diff2.getInt(1))),
+                                        robustLUTCen(_mm_popcnt_u64(diff4.getInt(0))), robustLUTCen(_mm_popcnt_u64(diff4.getInt(1))),
+                                        robustLUTCen(_mm_popcnt_u64(diff6.getInt(0))), robustLUTCen(_mm_popcnt_u64(diff6.getInt(1))));
+
+                        Int16x8 cost_total = cost_ad + cost_ct;
+                        for (int i = 0; i < 8; ++i) {
+                            costs.element(y, x + i) = cost_total[i];
+                        }
+
+                        im1 += 8;
+                        im2 += 8;
+                        cen1+= 8;
+                        cen2+= 8;
                     }
-#endif
+#else
                     for (; x < width - windowWh; ++x) {
                         uint8_t c_ad = costAD(*im1, *im2);
                         uint8_t c_census = hammingDist(*cen1, *cen2);
@@ -166,8 +190,8 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
                         cen1++;
                         cen2++;
                     }
+#endif
                 }
-
             }, !parallelDisp
             );
 
@@ -208,7 +232,7 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
 }
 
 template<typename pixel>
-void ADCensus::makeCensus(AbstractBuffer<pixel> *image, AbstractBuffer<uint64_t> *census) {
+void ADCensus::makeCensus(AbstractBuffer<pixel> *image, corecvs::AbstractBuffer<int64_t> *census) {
     if (!image->hasSameSize(census->h, census->w))
         return;
     for (int y = windowHh; y < image->h - windowHh; ++y) {
@@ -264,7 +288,7 @@ int ADCensus::makeArm(AbstractBuffer<pixel> *image, int x, int y) {
     return i - 1;
 }
 
-inline uint8_t ADCensus::hammingDist(uint64_t a, uint64_t b) {
+inline uint8_t ADCensus::hammingDist(int64_t a, int64_t b) {
     return _mm_popcnt_u64(a^b);
 }
 

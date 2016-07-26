@@ -50,9 +50,9 @@ private:
     int makeArm(corecvs::AbstractBuffer<pixel> *image, int x, int y);
 
     template<typename pixel>
-    void makeCensus(AbstractBuffer<pixel> *image, corecvs::AbstractBuffer<uint64_t> *census);
+    void makeCensus(AbstractBuffer<pixel> *image, corecvs::AbstractBuffer<int64_t> *census);
 
-    uint8_t hammingDist(uint64_t a, uint64_t b);
+    uint8_t hammingDist(int64_t a, int64_t b);
 
     COST_TYPE robust(uint8_t cost, double lambda);
 
