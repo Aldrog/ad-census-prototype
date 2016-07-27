@@ -34,8 +34,8 @@ void ADCensus::disparityMapFromGrayscale(QUrl leftImageUrl, QUrl rightImageUrl) 
 
     G12Buffer *leftImage  = BMPLoader().loadG12(left);
     G12Buffer *rightImage = BMPLoader().loadG12(right);
-    G12Buffer *leftGray = new G12Buffer(leftImage);
-    G12Buffer *rightGray = new G12Buffer(rightImage);
+    G12Buffer *leftGray   = new G12Buffer(leftImage);
+    G12Buffer *rightGray  = new G12Buffer(rightImage);
 
     G8Buffer *result = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
     BMPLoader().save("result.bmp", result);
@@ -57,8 +57,8 @@ void ADCensus::disparityMapFromRGB(QUrl leftImageUrl, QUrl rightImageUrl) {
 
     RGB24Buffer *leftImage  = BMPLoader().loadRGB(left);
     RGB24Buffer *rightImage = BMPLoader().loadRGB(right);
-    G8Buffer *leftGray = leftImage->getChannel(ImageChannel::GRAY);
-    G8Buffer *rightGray = rightImage->getChannel(ImageChannel::GRAY);
+    G8Buffer *leftGray      = leftImage->getChannel(ImageChannel::GRAY);
+    G8Buffer *rightGray     = rightImage->getChannel(ImageChannel::GRAY);
 
     G8Buffer *result = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
     BMPLoader().save("result.bmp", result);
@@ -260,15 +260,15 @@ void ADCensus::makeCensus(AbstractBuffer<pixel> *image, AbstractBuffer<int64_t> 
 
 template<typename pixel>
 void ADCensus::findBorderPixels(AbstractBuffer<pixel> *image) {
-    borderLeft = new AbstractBuffer<bool>(image->getSize());
-    borderTop = new AbstractBuffer<bool>(image->getSize());
+    bordersLeft = new AbstractBuffer<bool>(image->getSize());
+    bordersTop = new AbstractBuffer<bool>(image->getSize());
     for (int y = windowHh + 1; y <= image->h - windowHh; ++y) {
         for (int x = windowWh + 1; x <= image->w - windowWh; ++x) {
             if(colorDifference(image->element(y, x), image->element(y, x - 1)) >= anyAggregationArmColorThreshold) {
-                borderLeft->element(y, x) = true;
+                bordersLeft->element(y, x) = true;
             }
             if(colorDifference(image->element(y, x), image->element(y - 1, x)) >= anyAggregationArmColorThreshold) {
-                borderTop->element(y, x) = true;
+                bordersTop->element(y, x) = true;
             }
         }
     }
@@ -291,6 +291,9 @@ void ADCensus::makeAggregationCrosses(AbstractBuffer<pixel> *image) {
                         );
         }
     }
+
+    delete bordersLeft;
+    delete bordersTop;
 }
 
 template<int sx, int sy, typename pixel>
@@ -306,13 +309,13 @@ int ADCensus::makeArm(AbstractBuffer<pixel> *image, int x, int y) {
             break;
         pixel toAddPixel = image->element(y + i * sy, x + i * sx);
 
-        if(sx > 0 && borderLeft->element(y + i * sy, x + i * sx))
+        if(sx > 0 && bordersLeft->element(y + i * sy, x + i * sx))
             break;
-        if(sx < 0 && borderLeft->element(y + (i - 1) * sy, x + (i - 1) * sx))
+        if(sx < 0 && bordersLeft->element(y + (i - 1) * sy, x + (i - 1) * sx))
             break;
-        if(sy > 0 && borderTop->element(y + i * sy, x + i * sx))
+        if(sy > 0 && bordersTop->element(y + i * sy, x + i * sx))
             break;
-        if(sy < 0 && borderTop->element(y + (i - 1) * sy, x + (i - 1) * sx))
+        if(sy < 0 && bordersTop->element(y + (i - 1) * sy, x + (i - 1) * sx))
             break;
 
         if(!fitsForAggregation(i, currentPixel, toAddPixel))

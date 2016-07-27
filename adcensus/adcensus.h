@@ -46,8 +46,8 @@ private:
     template<typename pixel>
     void makeAggregationCrosses(corecvs::AbstractBuffer<pixel> *image);
 
-    AbstractBuffer<bool> *borderLeft;
-    AbstractBuffer<bool> *borderTop;
+    AbstractBuffer<bool> *bordersLeft;
+    AbstractBuffer<bool> *bordersTop;
 
     template<typename pixel>
     void findBorderPixels(AbstractBuffer<pixel> *image);
