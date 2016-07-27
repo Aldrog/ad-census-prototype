@@ -235,19 +235,23 @@ template<typename pixel>
 void ADCensus::makeCensus(AbstractBuffer<pixel> *image, corecvs::AbstractBuffer<int64_t> *census) {
     if (!image->hasSameSize(census->h, census->w))
         return;
-    for (int y = windowHh; y < image->h - windowHh; ++y) {
-        for (int x = windowWh; x < image->w - windowWh; ++x) {
-            pixel center = image->element(y, x);
-            for (int i = -windowHh; i < windowHh; ++i) {
-                for (int j = -windowWh; j < windowWh; ++j) {
-                    if(i != 0 || j != 0) {
-                        census->element(y, x) = census->element(y, x) << 1;
-                        census->element(y, x) += image->element(y + i, x + j) >= center;
+
+    parallelable_for(windowHh, image->h - windowHh,
+                     [&image, &census](const BlockedRange<int> &r) {
+        for (int y = r.begin(); y != r.end(); ++y) {
+            for (int x = windowWh; x < image->w - windowWh; ++x) {
+                pixel center = image->element(y, x);
+                for (int i = -windowHh; i < windowHh; ++i) {
+                    for (int j = -windowWh; j < windowWh; ++j) {
+                        if(i != 0 || j != 0) {
+                            census->element(y, x) = census->element(y, x) << 1;
+                            census->element(y, x) += image->element(y + i, x + j) >= center;
+                        }
                     }
                 }
             }
         }
-    }
+    });
 }
 
 template<typename pixel>
