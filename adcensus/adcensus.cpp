@@ -251,10 +251,27 @@ void ADCensus::makeCensus(AbstractBuffer<pixel> *image, corecvs::AbstractBuffer<
 }
 
 template<typename pixel>
+void ADCensus::findBorderPixels(AbstractBuffer<pixel> *image) {
+    borderLeft = new AbstractBuffer<bool>(image->getSize());
+    borderTop = new AbstractBuffer<bool>(image->getSize());
+    for (int y = windowHh; y < image->h - windowHh; ++y) {
+        for (int x = windowWh; x < image->w - windowWh; ++x) {
+            if(colorDifference(image->element(y, x), image->element(y, x - 1)) < anyAggregationArmColorThreshold) {
+                borderLeft->element(y, x) = true;
+            }
+            if(colorDifference(image->element(y, x), image->element(y - 1, x)) < anyAggregationArmColorThreshold) {
+                borderTop->element(y, x) = true;
+            }
+        }
+    }
+}
+
+template<typename pixel>
 void ADCensus::makeAggregationCrosses(AbstractBuffer<pixel> *image) {
     int width = image->w;
     int height = image->h;
     aggregationCrosses = AbstractBuffer<Vector4d<uint8_t>>(height, width);
+    findBorderPixels(image);
     for (int y = windowHh; y < height - windowHh; ++y) {
         for (int x = windowWh; x < width - windowWh; ++x) {
             aggregationCrosses.element(y, x) = Vector4d<uint8_t>
@@ -280,9 +297,17 @@ int ADCensus::makeArm(AbstractBuffer<pixel> *image, int x, int y) {
            y + i * sy < windowHh)
             break;
         pixel toAddPixel = image->element(y + i * sy, x + i * sx);
-        pixel prevPixel = image->element(y + (i - 1) * sy, x + (i - 1) * sx);
 
-        if(!fitsForAggregation(i, currentPixel, toAddPixel, prevPixel))
+        if(sx > 0 && borderLeft->element(y + i * sy, x + i * sx))
+            break;
+        if(sx < 0 && borderLeft->element(y + i * sy, x + (i - 1) * sx))
+            break;
+        if(sy > 0 && borderLeft->element(y + i * sy, x + i * sx))
+            break;
+        if(sy < 0 && borderLeft->element(y + i * sy, x + (i - 1) * sx))
+            break;
+
+        if(!fitsForAggregation(i, currentPixel, toAddPixel))
             break;
     }
     return i - 1;

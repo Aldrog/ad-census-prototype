@@ -46,6 +46,12 @@ private:
     template<typename pixel>
     void makeAggregationCrosses(corecvs::AbstractBuffer<pixel> *image);
 
+    AbstractBuffer<bool> *borderLeft;
+    AbstractBuffer<bool> *borderTop;
+
+    template<typename pixel>
+    void findBorderPixels(AbstractBuffer<pixel> *image);
+
     template<int sx, int sy, typename pixel>
     int makeArm(corecvs::AbstractBuffer<pixel> *image, int x, int y);
 
@@ -62,6 +68,10 @@ private:
         return RGBColor::diff(a, b).maximum();
     }
 
+    inline int colorDifference(const uint16_t &a, const uint16_t &b) {
+        return abs(a - b);
+    }
+
     inline uint8_t costAD(const RGBColor &a, const RGBColor &b) {
         return RGBColor::diff(a, b).brightness();
     }
@@ -70,20 +80,18 @@ private:
         return abs((a >> 4) - (b >> 4));
     }
 
-    inline bool fitsForAggregation(int len, RGBColor current, RGBColor toCheck, RGBColor previous) {
+    inline bool fitsForAggregation(int len, RGBColor current, RGBColor toCheck) {
         return (
                     len < maxAggregationArmLen &&
                     colorDifference(current, toCheck) < anyAggregationArmColorThreshold &&
-                    colorDifference(toCheck, previous) < anyAggregationArmColorThreshold &&
                     (len < avgAggregationArmLen || colorDifference(current, toCheck) < maxAggregationArmColorThreshold)
                );
     }
 
-    inline bool fitsForAggregation(int len, uint16_t current, uint16_t toCheck, uint16_t previous) {
+    inline bool fitsForAggregation(int len, uint16_t current, uint16_t toCheck) {
         return (
                     len < maxAggregationArmLen &&
                     abs(current - toCheck) < anyAggregationArmColorThreshold &&
-                    abs(toCheck - previous) < anyAggregationArmColorThreshold &&
                     (len < avgAggregationArmLen || abs(current - toCheck) < maxAggregationArmColorThreshold)
                );
     }
