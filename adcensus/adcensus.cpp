@@ -258,12 +258,12 @@ template<typename pixel>
 void ADCensus::findBorderPixels(AbstractBuffer<pixel> *image) {
     borderLeft = new AbstractBuffer<bool>(image->getSize());
     borderTop = new AbstractBuffer<bool>(image->getSize());
-    for (int y = windowHh; y < image->h - windowHh; ++y) {
-        for (int x = windowWh; x < image->w - windowWh; ++x) {
-            if(colorDifference(image->element(y, x), image->element(y, x - 1)) < anyAggregationArmColorThreshold) {
+    for (int y = windowHh + 1; y <= image->h - windowHh; ++y) {
+        for (int x = windowWh + 1; x <= image->w - windowWh; ++x) {
+            if(colorDifference(image->element(y, x), image->element(y, x - 1)) >= anyAggregationArmColorThreshold) {
                 borderLeft->element(y, x) = true;
             }
-            if(colorDifference(image->element(y, x), image->element(y - 1, x)) < anyAggregationArmColorThreshold) {
+            if(colorDifference(image->element(y, x), image->element(y - 1, x)) >= anyAggregationArmColorThreshold) {
                 borderTop->element(y, x) = true;
             }
         }
@@ -304,11 +304,11 @@ int ADCensus::makeArm(AbstractBuffer<pixel> *image, int x, int y) {
 
         if(sx > 0 && borderLeft->element(y + i * sy, x + i * sx))
             break;
-        if(sx < 0 && borderLeft->element(y + i * sy, x + (i - 1) * sx))
+        if(sx < 0 && borderLeft->element(y + (i - 1) * sy, x + (i - 1) * sx))
             break;
-        if(sy > 0 && borderLeft->element(y + i * sy, x + i * sx))
+        if(sy > 0 && borderTop->element(y + i * sy, x + i * sx))
             break;
-        if(sy < 0 && borderLeft->element(y + i * sy, x + (i - 1) * sx))
+        if(sy < 0 && borderTop->element(y + (i - 1) * sy, x + (i - 1) * sx))
             break;
 
         if(!fitsForAggregation(i, currentPixel, toAddPixel))
