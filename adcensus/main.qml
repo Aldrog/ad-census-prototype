@@ -41,7 +41,7 @@ Window {
                 text: qsTr("Start")
 
                 onClicked: {
-                    sharedADCensus.disparityMapFromGrayscale(leftImg.source, rightImg.source)
+                    sharedADCensus.disparityMapFromRGB(leftImg.source, rightImg.source)
                 }
             }
         }

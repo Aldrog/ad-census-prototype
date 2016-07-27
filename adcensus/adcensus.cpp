@@ -38,7 +38,9 @@ void ADCensus::disparityMapFromGrayscale(QUrl leftImageUrl, QUrl rightImageUrl) 
     G12Buffer *rightGray = new G12Buffer(rightImage);
 
     G8Buffer *result = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
-    BMPLoader().save("../../result.bmp", result);
+    BMPLoader().save("result.bmp", result);
+
+    cout << "Resulting disparity map saved to result.bmp\n";
 
     delete leftImage;
     delete rightImage;
@@ -59,7 +61,9 @@ void ADCensus::disparityMapFromRGB(QUrl leftImageUrl, QUrl rightImageUrl) {
     G8Buffer *rightGray = rightImage->getChannel(ImageChannel::GRAY);
 
     G8Buffer *result = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
-    BMPLoader().save("../../result.bmp", result);
+    BMPLoader().save("result.bmp", result);
+
+    cout << "Resulting disparity map saved to result.bmp\n";
 
     delete leftImage;
     delete rightImage;

@@ -95,7 +95,6 @@ private:
                     (len < avgAggregationArmLen || abs(current - toCheck) < maxAggregationArmColorThreshold)
                );
     }
-
 };
 
 #endif // ADCENSUS_H
