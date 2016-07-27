@@ -236,7 +236,7 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
 }
 
 template<typename pixel>
-void ADCensus::makeCensus(AbstractBuffer<pixel> *image, corecvs::AbstractBuffer<int64_t> *census) {
+void ADCensus::makeCensus(AbstractBuffer<pixel> *image, AbstractBuffer<int64_t> *census) {
     if (!image->hasSameSize(census->h, census->w))
         return;
 
@@ -248,7 +248,7 @@ void ADCensus::makeCensus(AbstractBuffer<pixel> *image, corecvs::AbstractBuffer<
                 for (int i = -windowHh; i < windowHh; ++i) {
                     for (int j = -windowWh; j < windowWh; ++j) {
                         if(i != 0 || j != 0) {
-                            census->element(y, x) = census->element(y, x) << 1;
+                            census->element(y, x) <<= 1;
                             census->element(y, x) += image->element(y + i, x + j) >= center;
                         }
                     }

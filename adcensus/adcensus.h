@@ -68,8 +68,8 @@ private:
         return RGBColor::diff(a, b).maximum();
     }
 
-    inline int colorDifference(const uint16_t &a, const uint16_t &b) {
-        return abs(a - b);
+    inline uint16_t colorDifference(const uint16_t &a, const uint16_t &b) {
+        return abs((a >> 4) - (b >> 4));
     }
 
     inline uint8_t costAD(const RGBColor &a, const RGBColor &b) {
@@ -80,19 +80,12 @@ private:
         return abs((a >> 4) - (b >> 4));
     }
 
-    inline bool fitsForAggregation(int len, RGBColor current, RGBColor toCheck) {
+    template<typename pixel>
+    inline bool fitsForAggregation(int len, pixel current, pixel toCheck) {
         return (
                     len < maxAggregationArmLen &&
                     colorDifference(current, toCheck) < anyAggregationArmColorThreshold &&
                     (len < avgAggregationArmLen || colorDifference(current, toCheck) < maxAggregationArmColorThreshold)
-               );
-    }
-
-    inline bool fitsForAggregation(int len, uint16_t current, uint16_t toCheck) {
-        return (
-                    len < maxAggregationArmLen &&
-                    abs(current - toCheck) < anyAggregationArmColorThreshold &&
-                    (len < avgAggregationArmLen || abs(current - toCheck) < maxAggregationArmColorThreshold)
                );
     }
 };
