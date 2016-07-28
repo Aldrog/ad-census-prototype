@@ -18,8 +18,8 @@ public:
     explicit ADCensus(QObject *parent = 0);
 
     template<typename pixel, typename grayPixel>
-    G8Buffer *constructDisparityMap(AbstractBuffer<pixel> *leftImage, AbstractBuffer<pixel> *rightImage,
-                                    AbstractBuffer<grayPixel> *leftGrayImage, AbstractBuffer<grayPixel> *rightGrayImage);
+    AbstractBuffer<int32_t> constructDisparityMap(const AbstractBuffer<pixel> *leftImage, const AbstractBuffer<pixel> *rightImage,
+                                                  const AbstractBuffer<grayPixel> *leftGrayImage, const AbstractBuffer<grayPixel> *rightGrayImage);
 signals:
 
 public slots:
@@ -41,22 +41,22 @@ private:
     COST_TYPE robustLUTCen(uint8_t in);
     COST_TYPE robustLUTAD(uint8_t in);
 
-    corecvs::AbstractBuffer<corecvs::Vector4d<uint8_t>> aggregationCrosses;
+    AbstractBuffer<Vector4d<uint8_t>> aggregationCrosses;
 
     template<typename pixel>
-    void makeAggregationCrosses(corecvs::AbstractBuffer<pixel> *image);
+    void makeAggregationCrosses(const AbstractBuffer<pixel> *image);
 
-    AbstractBuffer<bool> *bordersLeft;
-    AbstractBuffer<bool> *bordersTop;
+    AbstractBuffer<bool> bordersLeft;
+    AbstractBuffer<bool> bordersTop;
 
     template<typename pixel>
-    void findBorderPixels(AbstractBuffer<pixel> *image);
+    void findBorderPixels(const AbstractBuffer<pixel> *image);
 
     template<int sx, int sy, typename pixel>
-    int makeArm(corecvs::AbstractBuffer<pixel> *image, int x, int y);
+    int makeArm(const AbstractBuffer<pixel> *image, int x, int y);
 
     template<typename pixel>
-    void makeCensus(AbstractBuffer<pixel> *image, corecvs::AbstractBuffer<int64_t> *census);
+    void makeCensus(const AbstractBuffer<pixel> *image, AbstractBuffer<int64_t> &census);
 
     uint8_t hammingDist(int64_t a, int64_t b);
 
@@ -64,30 +64,14 @@ private:
 
     void aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, int topBorder, int width, int height);
 
-    inline int colorDifference(const RGBColor &a, const RGBColor &b) {
-        return RGBColor::diff(a, b).maximum();
-    }
+    uint8_t colorDifference(const RGBColor &a, const RGBColor &b);
+    uint8_t colorDifference(const uint16_t &a, const uint16_t &b);
 
-    inline uint16_t colorDifference(const uint16_t &a, const uint16_t &b) {
-        return abs((a >> 4) - (b >> 4));
-    }
-
-    inline uint8_t costAD(const RGBColor &a, const RGBColor &b) {
-        return RGBColor::diff(a, b).brightness();
-    }
-
-    inline uint8_t costAD(const uint16_t &a, const uint16_t &b) {
-        return abs((a >> 4) - (b >> 4));
-    }
+    uint8_t costAD(const RGBColor &a, const RGBColor &b);
+    uint8_t costAD(const uint16_t &a, const uint16_t &b);
 
     template<typename pixel>
-    inline bool fitsForAggregation(int len, pixel current, pixel toCheck) {
-        return (
-                    len < maxAggregationArmLen &&
-                    colorDifference(current, toCheck) < anyAggregationArmColorThreshold &&
-                    (len < avgAggregationArmLen || colorDifference(current, toCheck) < maxAggregationArmColorThreshold)
-               );
-    }
+    bool fitsForAggregation(int len, const pixel &current, const pixel &toCheck);
 };
 
 #endif // ADCENSUS_H

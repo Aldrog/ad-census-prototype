@@ -41,7 +41,14 @@ void ADCensus::disparityMapFromGrayscale(QUrl leftImageUrl, QUrl rightImageUrl) 
     G12Buffer *leftGray   = new G12Buffer(leftImage);
     G12Buffer *rightGray  = new G12Buffer(rightImage);
 
-    G8Buffer *result = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
+    AbstractBuffer<int32_t> disparities = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
+
+    G8Buffer *result = new G8Buffer(disparities.getSize());
+    for (int x = 0; x < result->w; ++x) {
+        for (int y = 0; y < result->h; ++y) {
+            result->element(y,x) = (disparities.element(y, x) / (double)result->w * 255 * 3);
+        }
+    }
     BMPLoader().save("result.bmp", result);
 
     cout << "Resulting disparity map saved to result.bmp\n";
@@ -64,7 +71,14 @@ void ADCensus::disparityMapFromRGB(QUrl leftImageUrl, QUrl rightImageUrl) {
     G8Buffer *leftGray      = leftImage->getChannel(ImageChannel::GRAY);
     G8Buffer *rightGray     = rightImage->getChannel(ImageChannel::GRAY);
 
-    G8Buffer *result = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
+    AbstractBuffer<int32_t> disparities = constructDisparityMap(leftImage, rightImage, leftGray, rightGray);
+
+    G8Buffer *result = new G8Buffer(disparities.getSize());
+    for (int x = 0; x < result->w; ++x) {
+        for (int y = 0; y < result->h; ++y) {
+            result->element(y,x) = (disparities.element(y, x) / (double)result->w * 255 * 3);
+        }
+    }
     BMPLoader().save("result.bmp", result);
 
     cout << "Resulting disparity map saved to result.bmp\n";
@@ -77,8 +91,8 @@ void ADCensus::disparityMapFromRGB(QUrl leftImageUrl, QUrl rightImageUrl) {
 }
 
 template<typename pixel, typename grayPixel>
-G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, AbstractBuffer<pixel> *rightImage,
-                                          AbstractBuffer<grayPixel> *leftGrayImage, AbstractBuffer<grayPixel> *rightGrayImage) {
+AbstractBuffer<int32_t> ADCensus::constructDisparityMap(const AbstractBuffer<pixel> *leftImage, const AbstractBuffer<pixel> *rightImage,
+                                                        const AbstractBuffer<grayPixel> *leftGrayImage, const AbstractBuffer<grayPixel> *rightGrayImage) {
     // Initialization
 
     int width = leftImage->w;
@@ -89,17 +103,15 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
     outerStats.setValue("H", height);
     outerStats.setValue("W", width);
 
-    G8Buffer *result = new G8Buffer(leftImage->getSize());
-
-    auto bestDisparities = AbstractBuffer<uint32_t>(height, width);
+    AbstractBuffer<int32_t> bestDisparities = AbstractBuffer<int32_t>(height, width);
     AbstractBuffer<COST_TYPE> minCosts = AbstractBuffer<COST_TYPE>(height, width);
     minCosts.fillWith(-1);
 
     // Disparity computation
     outerStats.startInterval();
 
-    AbstractBuffer<int64_t> *leftCensus  = new AbstractBuffer<int64_t>(height, width);
-    AbstractBuffer<int64_t> *rightCensus = new AbstractBuffer<int64_t>(height, width);
+    AbstractBuffer<int64_t> leftCensus  = AbstractBuffer<int64_t>(height, width);
+    AbstractBuffer<int64_t> rightCensus = AbstractBuffer<int64_t>(height, width);
     makeCensus(leftGrayImage, leftCensus);
     makeCensus(rightGrayImage, rightCensus);
     outerStats.resetInterval("Making census");
@@ -132,8 +144,8 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
                     auto *im1 = &leftImage->element(y, windowWh + d);
                     auto *im2 = &rightImage->element(y, windowWh);
 
-                    int64_t *cen1 = &leftCensus->element(y, windowWh + d);
-                    int64_t *cen2 = &rightCensus->element(y, windowWh);
+                    int64_t *cen1 = &leftCensus.element(y, windowWh + d);
+                    int64_t *cen2 = &rightCensus.element(y, windowWh);
 
                     int x = windowWh + d;
 
@@ -227,25 +239,17 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
 
         }
     }, parallelDisp);
-    for (int x = 0; x < width; ++x) {
-        for (int y = 0; y < height; ++y) {
-            result->element(y,x) = (bestDisparities.element(y, x) / (double)width * 255 * 3);
-        }
-    }
     outerStats.endInterval("Total");
     collector.addStatistics(outerStats);
     collector.printAdvanced();
     fflush(stdout);
 
-    delete leftCensus;
-    delete rightCensus;
-
-    return result;
+    return bestDisparities;
 }
 
 template<typename pixel>
-void ADCensus::makeCensus(AbstractBuffer<pixel> *image, AbstractBuffer<int64_t> *census) {
-    if (!image->hasSameSize(census->h, census->w))
+void ADCensus::makeCensus(const AbstractBuffer<pixel> *image, AbstractBuffer<int64_t> &census) {
+    if (!image->hasSameSize(census.h, census.w))
         return;
 
     parallelable_for(windowHh, image->h - windowHh,
@@ -256,8 +260,8 @@ void ADCensus::makeCensus(AbstractBuffer<pixel> *image, AbstractBuffer<int64_t> 
                 for (int i = -windowHh; i < windowHh; ++i) {
                     for (int j = -windowWh; j < windowWh; ++j) {
                         if(i != 0 || j != 0) {
-                            census->element(y, x) <<= 1;
-                            census->element(y, x) += image->element(y + i, x + j) >= center;
+                            census.element(y, x) <<= 1;
+                            census.element(y, x) += image->element(y + i, x + j) >= center;
                         }
                     }
                 }
@@ -267,7 +271,7 @@ void ADCensus::makeCensus(AbstractBuffer<pixel> *image, AbstractBuffer<int64_t> 
 }
 
 template<typename pixel>
-void ADCensus::findBorderPixels(AbstractBuffer<pixel> *image) {
+void ADCensus::findBorderPixels(const AbstractBuffer<pixel> *image) {
     bordersLeft = new AbstractBuffer<bool>(image->getSize());
     bordersTop = new AbstractBuffer<bool>(image->getSize());
     parallelable_for(windowHh, image->h - windowHh + 1,
@@ -275,10 +279,10 @@ void ADCensus::findBorderPixels(AbstractBuffer<pixel> *image) {
         for (int y = r.begin(); y != r.end(); ++y) {
             for (int x = windowWh; x <= image->w - windowWh; ++x) {
                 if(colorDifference(image->element(y, x), image->element(y, x - 1)) >= anyAggregationArmColorThreshold) {
-                    bordersLeft->element(y, x) = true;
+                    bordersLeft.element(y, x) = true;
                 }
                 if(colorDifference(image->element(y, x), image->element(y - 1, x)) >= anyAggregationArmColorThreshold) {
-                    bordersTop->element(y, x) = true;
+                    bordersTop.element(y, x) = true;
                 }
             }
         }
@@ -286,7 +290,7 @@ void ADCensus::findBorderPixels(AbstractBuffer<pixel> *image) {
 }
 
 template<typename pixel>
-void ADCensus::makeAggregationCrosses(AbstractBuffer<pixel> *image) {
+void ADCensus::makeAggregationCrosses(const AbstractBuffer<pixel> *image) {
     int width = image->w;
     int height = image->h;
     aggregationCrosses = AbstractBuffer<Vector4d<uint8_t>>(height, width);
@@ -305,13 +309,10 @@ void ADCensus::makeAggregationCrosses(AbstractBuffer<pixel> *image) {
             }
         }
     });
-
-    delete bordersLeft;
-    delete bordersTop;
 }
 
 template<int sx, int sy, typename pixel>
-int ADCensus::makeArm(AbstractBuffer<pixel> *image, int x, int y) {
+int ADCensus::makeArm(const AbstractBuffer<pixel> *image, int x, int y) {
     pixel currentPixel = image->element(y, x);
 
     int i;
@@ -323,13 +324,13 @@ int ADCensus::makeArm(AbstractBuffer<pixel> *image, int x, int y) {
             break;
         pixel toAddPixel = image->element(y + i * sy, x + i * sx);
 
-        if(sx > 0 && bordersLeft->element(y + i * sy, x + i * sx))
+        if(sx > 0 && bordersLeft.element(y + i * sy, x + i * sx))
             break;
-        if(sx < 0 && bordersLeft->element(y + (i - 1) * sy, x + (i - 1) * sx))
+        if(sx < 0 && bordersLeft.element(y + (i - 1) * sy, x + (i - 1) * sx))
             break;
-        if(sy > 0 && bordersTop->element(y + i * sy, x + i * sx))
+        if(sy > 0 && bordersTop.element(y + i * sy, x + i * sx))
             break;
-        if(sy < 0 && bordersTop->element(y + (i - 1) * sy, x + (i - 1) * sx))
+        if(sy < 0 && bordersTop.element(y + (i - 1) * sy, x + (i - 1) * sx))
             break;
 
         if(!fitsForAggregation(i, currentPixel, toAddPixel))
@@ -356,16 +357,16 @@ COST_TYPE ADCensus::robustLUTAD(uint8_t in) {
 }
 
 void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, int topBorder, int width, int height) {
-    AbstractBuffer<COST_TYPE> *rlAggregation = new AbstractBuffer<COST_TYPE>(height, width);
+    AbstractBuffer<COST_TYPE> rlAggregation = AbstractBuffer<COST_TYPE>(height, width);
     for (int y = topBorder; y < height; ++y) {
         for (int x = leftBorder; x < width; ++x) {
             int start = std::max(x - aggregationCrosses.element(y, x)[DIR_LEFT], leftBorder);
             int end = std::min(x + aggregationCrosses.element(y, x)[DIR_RIGHT], width - 1);
             int len = end - start + 1;
             for (int curX = start; curX <= end; ++curX) {
-                rlAggregation->element(y, x) += costs->element(y, curX);
+                rlAggregation.element(y, x) += costs->element(y, curX);
             }
-            rlAggregation->element(y, x) /= len;
+            rlAggregation.element(y, x) /= len;
         }
     }
     costs->fillWith(0);
@@ -375,10 +376,34 @@ void ADCensus::aggregateCosts(AbstractBuffer<COST_TYPE> *costs, int leftBorder, 
             int end = std::min(y + aggregationCrosses.element(y, x)[DIR_DOWN], height - 1);
             int len = end - start + 1;
             for (int curY = start; curY <= end; ++curY) {
-                costs->element(y, x) += rlAggregation->element(curY, x);
+                costs->element(y, x) += rlAggregation.element(curY, x);
             }
             costs->element(y, x) /= len;
         }
     }
-    delete rlAggregation;
+}
+
+inline uint8_t ADCensus::colorDifference(const RGBColor &a, const RGBColor &b) {
+    return RGBColor::diff(a, b).maximum();
+}
+
+inline uint8_t ADCensus::colorDifference(const uint16_t &a, const uint16_t &b) {
+    return abs((a >> 4) - (b >> 4));
+}
+
+inline uint8_t ADCensus::costAD(const RGBColor &a, const RGBColor &b) {
+    return RGBColor::diff(a, b).brightness();
+}
+
+inline uint8_t ADCensus::costAD(const uint16_t &a, const uint16_t &b) {
+    return abs((a >> 4) - (b >> 4));
+}
+
+template<typename pixel>
+inline bool ADCensus::fitsForAggregation(int len, const pixel &current, const pixel &toCheck) {
+    return (
+                len < maxAggregationArmLen &&
+                colorDifference(current, toCheck) < anyAggregationArmColorThreshold &&
+                (len < avgAggregationArmLen || colorDifference(current, toCheck) < maxAggregationArmColorThreshold)
+           );
 }
