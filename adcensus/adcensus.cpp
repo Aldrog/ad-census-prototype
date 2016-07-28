@@ -270,10 +270,10 @@ template<typename pixel>
 void ADCensus::findBorderPixels(AbstractBuffer<pixel> *image) {
     bordersLeft = new AbstractBuffer<bool>(image->getSize());
     bordersTop = new AbstractBuffer<bool>(image->getSize());
-    parallelable_for(windowHh + 1, image->h - windowHh + 1,
+    parallelable_for(windowHh, image->h - windowHh + 1,
                      [this, &image](const BlockedRange<int> &r) {
         for (int y = r.begin(); y != r.end(); ++y) {
-            for (int x = windowWh + 1; x <= image->w - windowWh; ++x) {
+            for (int x = windowWh; x <= image->w - windowWh; ++x) {
                 if(colorDifference(image->element(y, x), image->element(y, x - 1)) >= anyAggregationArmColorThreshold) {
                     bordersLeft->element(y, x) = true;
                 }
