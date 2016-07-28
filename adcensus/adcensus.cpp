@@ -7,6 +7,8 @@
 #include <calculationStats.h>
 #include <cmath>
 
+#include <tbb/mutex.h>
+
 #define DIR_RIGHT 0
 #define DIR_LEFT 1
 #define DIR_DOWN 2
@@ -19,6 +21,8 @@ const int windowWh = 4;
 const int windowHh = 3;
 
 const COST_TYPE robustPrecision = 127;
+
+tbb::mutex bestDisparitiesMutex;
 
 ADCensus::ADCensus(QObject *parent) : QObject(parent)
 {
@@ -207,6 +211,7 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
 
             for (int x = windowWh + d; x < width - windowWh; ++x) {
                 for (int y = windowHh; y < height - windowHh; ++y) {
+                    tbb::mutex::scoped_lock(bestDisparitiesMutex);
                     if(costs.element(y, x) < minCosts.element(y, x)) {
                         minCosts.element(y, x) = costs.element(y, x);
                         bestDisparities.element(y, x) = d;
