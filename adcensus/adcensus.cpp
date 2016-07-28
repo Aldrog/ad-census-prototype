@@ -232,6 +232,9 @@ G8Buffer *ADCensus::constructDisparityMap(AbstractBuffer<pixel> *leftImage, Abst
     collector.printAdvanced();
     fflush(stdout);
 
+    delete leftCensus;
+    delete rightCensus;
+
     return result;
 }
 
@@ -262,16 +265,19 @@ template<typename pixel>
 void ADCensus::findBorderPixels(AbstractBuffer<pixel> *image) {
     bordersLeft = new AbstractBuffer<bool>(image->getSize());
     bordersTop = new AbstractBuffer<bool>(image->getSize());
-    for (int y = windowHh + 1; y <= image->h - windowHh; ++y) {
-        for (int x = windowWh + 1; x <= image->w - windowWh; ++x) {
-            if(colorDifference(image->element(y, x), image->element(y, x - 1)) >= anyAggregationArmColorThreshold) {
-                bordersLeft->element(y, x) = true;
-            }
-            if(colorDifference(image->element(y, x), image->element(y - 1, x)) >= anyAggregationArmColorThreshold) {
-                bordersTop->element(y, x) = true;
+    parallelable_for(windowHh + 1, image->h - windowHh + 1,
+                     [this, &image](const BlockedRange<int> &r) {
+        for (int y = r.begin(); y != r.end(); ++y) {
+            for (int x = windowWh + 1; x <= image->w - windowWh; ++x) {
+                if(colorDifference(image->element(y, x), image->element(y, x - 1)) >= anyAggregationArmColorThreshold) {
+                    bordersLeft->element(y, x) = true;
+                }
+                if(colorDifference(image->element(y, x), image->element(y - 1, x)) >= anyAggregationArmColorThreshold) {
+                    bordersTop->element(y, x) = true;
+                }
             }
         }
-    }
+    });
 }
 
 template<typename pixel>
@@ -280,17 +286,20 @@ void ADCensus::makeAggregationCrosses(AbstractBuffer<pixel> *image) {
     int height = image->h;
     aggregationCrosses = AbstractBuffer<Vector4d<uint8_t>>(height, width);
     findBorderPixels(image);
-    for (int y = windowHh; y < height - windowHh; ++y) {
-        for (int x = windowWh; x < width - windowWh; ++x) {
-            aggregationCrosses.element(y, x) = Vector4d<uint8_t>
+    parallelable_for(windowHh, height - windowHh,
+                     [this, &image, width](const BlockedRange<int> &r) {
+        for (int y = r.begin(); y != r.end(); ++y) {
+            for (int x = windowWh; x < width - windowWh; ++x) {
+                aggregationCrosses.element(y, x) = Vector4d<uint8_t>
                         (
                             makeArm<1, 0>(image, x, y),
                             makeArm<-1, 0>(image, x, y),
                             makeArm<0, 1>(image, x, y),
                             makeArm<0, -1>(image, x, y)
                         );
+            }
         }
-    }
+    });
 
     delete bordersLeft;
     delete bordersTop;
