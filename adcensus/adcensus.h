@@ -1,15 +1,10 @@
 #ifndef ADCENSUS_H
 #define ADCENSUS_H
 
-#include <QColor>
-
 #include <QObject>
-#include <QImage>
 #include <QUrl>
-#include <algorithm>
 
 #include "rgb24Buffer.h"
-#include "matrix.h"
 
 class ADCensus : public QObject
 {

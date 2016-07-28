@@ -1,5 +1,4 @@
 #include "adcensus.h"
-#include "rgb24Buffer.h"
 #include "bufferFactory.h"
 #include "tbbWrapper.h"
 
@@ -27,8 +26,6 @@ tbb::mutex bestDisparitiesMutex;
 ADCensus::ADCensus(QObject *parent) : QObject(parent)
 {
 }
-
-using corecvs::Matrix;
 
 void ADCensus::disparityMapFromGrayscale(QUrl leftImageUrl, QUrl rightImageUrl) {
     std::string left  = leftImageUrl.toLocalFile().toStdString();
