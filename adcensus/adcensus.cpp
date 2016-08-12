@@ -254,8 +254,8 @@ void ADCensus::makeCensus(const AbstractBuffer<pixel> *image, AbstractBuffer<int
         for (int y = r.begin(); y != r.end(); ++y) {
             for (int x = windowWh; x < image->w - windowWh; ++x) {
                 pixel center = image->element(y, x);
-                for (int i = -windowHh; i < windowHh; ++i) {
-                    for (int j = -windowWh; j < windowWh; ++j) {
+                for (int i = -windowHh; i <= windowHh; ++i) {
+                    for (int j = -windowWh; j <= windowWh; ++j) {
                         if(i != 0 || j != 0) {
                             census.element(y, x) <<= 1;
                             census.element(y, x) += image->element(y + i, x + j) >= center;
